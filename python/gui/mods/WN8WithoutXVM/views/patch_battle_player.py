@@ -152,7 +152,8 @@ class PatchBattlePlayer(object):
                     return
                 try:
                     for field in EXTRA_FIELDS:
-                        bp_self._addStringProperty(field, '')
+                        default = '#FFFFFF' if field.endswith('_color') else ''
+                        bp_self._addStringProperty(field, default)
                 except Exception as e:
                     logger.debug('[PatchBattlePlayer] addStringProperty failed: %s', e)
 
@@ -236,18 +237,34 @@ class PatchBattlePlayer(object):
             winrate = float(stats.get('winrate', 0) or 0)
             battles = int(stats.get('battles', 0) or 0)
 
-            if g_configParams.showWn8.value and hasattr(player, 'setWn8'):
-                player.setWn8(str(wn8) if wn8 else '')
-                player.setWn8Color(_wn8_color(wn8) if wn8 else '')
+            wn8_color = _wn8_color(wn8) if wn8 else '#FFFFFF'
+            wr_color = _winrate_color(winrate) if winrate else '#FFFFFF'
+            b_color = _battles_color(battles) if battles else '#FFFFFF'
 
-            if g_configParams.showWinrate.value and hasattr(player, 'setWinrate'):
-                wr_text = ('%.1f%%' % winrate) if winrate else ''
-                player.setWinrate(wr_text)
-                player.setWinrateColor(_winrate_color(winrate) if winrate else '')
+            if hasattr(player, 'setWn8Color'):
+                player.setWn8Color(wn8_color)
+            if hasattr(player, 'setWinrateColor'):
+                player.setWinrateColor(wr_color)
+            if hasattr(player, 'setBattlesColor'):
+                player.setBattlesColor(b_color)
 
-            if g_configParams.showBattles.value and hasattr(player, 'setBattles'):
-                player.setBattles(_format_battles(battles))
-                player.setBattlesColor(_battles_color(battles) if battles else '')
+            if hasattr(player, 'setWn8'):
+                if g_configParams.showWn8.value and wn8:
+                    player.setWn8(str(wn8))
+                else:
+                    player.setWn8('')
+
+            if hasattr(player, 'setWinrate'):
+                if g_configParams.showWinrate.value and winrate:
+                    player.setWinrate('%.1f%%' % winrate)
+                else:
+                    player.setWinrate('')
+
+            if hasattr(player, 'setBattles'):
+                if g_configParams.showBattles.value and battles:
+                    player.setBattles(_format_battles(battles))
+                else:
+                    player.setBattles('')
         except Exception as e:
             logger.debug('[PatchBattlePlayer] setValues failed: %s', e)
 

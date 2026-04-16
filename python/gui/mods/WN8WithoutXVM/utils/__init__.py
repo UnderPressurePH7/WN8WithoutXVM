@@ -14,9 +14,7 @@ __all__ = [
     'restore_overrides',
     'get_wn8_color',
     'get_winrate_color',
-    'get_battles_color',
-    'get_survival_color',
-    'get_dmg_ratio_color'
+    'get_battles_color'
 ]
 
 
@@ -105,48 +103,15 @@ def get_winrate_color(winrate):
 
 def get_battles_color(battles):
     if battles < 1000:
-        return "#AAAAAA"
-    elif battles < 5000:
-        return "#FFFFFF"
+        return "#FE0E00"
     elif battles < 10000:
-        return "#60FF00"
-    else:
-        return "#02C9B3"
-
-
-def get_survival_color(survival):
-    if survival <= 0:
-        return "#FFFFFF"
-    elif survival < 20:
-        return "#FE0E00"
-    elif survival < 30:
         return "#FE7903"
-    elif survival < 40:
-        return "#F8F400"
-    elif survival < 50:
+    elif battles < 50000:
         return "#60FF00"
-    elif survival < 60:
+    elif battles < 100000:
         return "#02C9B3"
     else:
         return "#D042F3"
-
-
-def get_dmg_ratio_color(dmgRatio):
-    if dmgRatio <= 0:
-        return "#FFFFFF"
-    elif dmgRatio < 0.5:
-        return "#FE0E00"
-    elif dmgRatio < 0.8:
-        return "#FE7903"
-    elif dmgRatio < 1.0:
-        return "#F8F400"
-    elif dmgRatio < 1.3:
-        return "#60FF00"
-    elif dmgRatio < 1.8:
-        return "#02C9B3"
-    else:
-        return "#D042F3"
-
 
 def _internal_fetch(url, headers, timeout, method, postData, callback):
     return BigWorld.fetchURL(
