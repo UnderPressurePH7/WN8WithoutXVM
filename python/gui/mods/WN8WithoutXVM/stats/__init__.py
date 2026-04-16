@@ -35,6 +35,7 @@ def finalize_stats():
     global g_stats_api, g_stats_manager
     try:
         if g_stats_manager:
+            g_stats_manager.clear_update_callbacks()
             g_stats_manager.clear_cache()
             g_stats_manager = None
             logger.debug('[StatsManager] Finalized')

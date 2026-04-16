@@ -77,3 +77,7 @@ class StatsManager(object):
     def clear_cache(self):
         self._stats_cache.clear()
         logger.debug('[StatsManager] Cache cleared')
+
+    def clear_update_callbacks(self):
+        self._update_callbacks[:] = []
+        logger.debug('[StatsManager] Update callbacks cleared')

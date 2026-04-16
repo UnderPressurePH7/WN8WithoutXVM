@@ -66,6 +66,9 @@ class BattleProvider(object):
         logger.debug('[BattleProvider] Finalizing...')
         self._battleSessionId += 1
         self._isBattleActive = False
+        self._arena = None
+        self._playerTeam = None
+        self._loadedAccounts.clear()
         BattleProvider._instance = None
 
         if self._fallbackSubscribed:
@@ -209,6 +212,9 @@ class BattleProvider(object):
 
         self._battleSessionId += 1
         self._isBattleActive = False
+        self._arena = None
+        self._playerTeam = None
+        self._loadedAccounts.clear()
 
         try:
             if self._panelView is not None:
