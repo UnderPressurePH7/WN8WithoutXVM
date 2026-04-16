@@ -7,7 +7,6 @@ from wg_async import wg_async, AsyncReturn, await_callback
 
 __all__ = [
     'logger',
-    'set_debug_mode',
     'fetch_data_with_retry',
     'cancelCallbackSafe',
     'override',
@@ -31,11 +30,6 @@ def cancelCallbackSafe(cbid):
 
 logger = logging.getLogger('WN8WithoutXVM')
 logger.setLevel(logging.DEBUG if os.path.isfile('.debug_mods') else logging.ERROR)
-
-
-def set_debug_mode(enabled):
-
-    logger.setLevel(logging.DEBUG if enabled else logging.ERROR)
 
 
 _overrides = []

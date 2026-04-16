@@ -2,9 +2,7 @@ from ..utils import (
     logger,
     get_wn8_color,
     get_winrate_color,
-    get_battles_color,
-    get_survival_color,
-    get_dmg_ratio_color
+    get_battles_color
 )
 
 
