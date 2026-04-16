@@ -13,7 +13,8 @@ __all__ = [
     'restore_overrides',
     'get_wn8_color',
     'get_winrate_color',
-    'get_battles_color'
+    'get_battles_color',
+    'get_format_battles'
 ]
 
 
@@ -96,16 +97,28 @@ def get_winrate_color(winrate):
 
 
 def get_battles_color(battles):
+    if battles <= 0:
+        return "#FFFFFF"
     if battles < 1000:
-        return "#FE0E00"
-    elif battles < 10000:
         return "#FE7903"
+    elif battles < 10000:
+        return "#F8F400"
     elif battles < 50000:
         return "#60FF00"
     elif battles < 100000:
         return "#02C9B3"
     else:
         return "#D042F3"
+
+
+def get_format_battles(b):
+    if not b:
+        return ''
+    if b >= 1000000:
+        return '%.1fM' % (b / 1000000.0)
+    if b >= 1000:
+        return '%.1fk' % (b / 1000.0)
+    return str(b)
 
 def _internal_fetch(url, headers, timeout, method, postData, callback):
     return BigWorld.fetchURL(

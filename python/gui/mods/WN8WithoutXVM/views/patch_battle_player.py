@@ -1,7 +1,13 @@
 import inspect
 from functools import wraps
 
-from ..utils import logger
+from ..utils import (
+    logger,
+    get_wn8_color,
+    get_winrate_color,
+    get_battles_color,
+    get_format_battles
+)
 from ..settings.config_param import g_configParams
 
 
@@ -13,57 +19,6 @@ EXTRA_FIELDS = (
     'battles',
     'battles_color',
 )
-
-
-def _wn8_color(wn8):
-    if wn8 >= 3715:
-        return '#D042F3'
-    elif wn8 >= 2700:
-        return '#02C9B3'
-    elif wn8 >= 1750:
-        return '#60FF00'
-    elif wn8 >= 1120:
-        return '#F8F400'
-    elif wn8 >= 650:
-        return '#FE7903'
-    return '#FE0E00'
-
-
-def _winrate_color(wr):
-    if wr <= 0:
-        return ''
-    if wr >= 64.0:
-        return '#D042F3'
-    if wr >= 58.5:
-        return '#02C9B3'
-    if wr >= 53.0:
-        return '#60FF00'
-    if wr >= 49.5:
-        return '#F8F400'
-    if wr >= 46.5:
-        return '#FE7903'
-    return '#FE0E00'
-
-
-def _battles_color(b):
-    if b < 1000:
-        return '#AAAAAA'
-    if b < 5000:
-        return '#FFFFFF'
-    if b < 10000:
-        return '#60FF00'
-    return '#02C9B3'
-
-
-def _format_battles(b):
-    if not b:
-        return ''
-    if b >= 1000000:
-        return '%.1fM' % (b / 1000000.0)
-    if b >= 1000:
-        return '%.1fk' % (b / 1000.0)
-    return str(b)
-
 
 class PatchBattlePlayer(object):
 
@@ -237,9 +192,9 @@ class PatchBattlePlayer(object):
             winrate = float(stats.get('winrate', 0) or 0)
             battles = int(stats.get('battles', 0) or 0)
 
-            wn8_color = _wn8_color(wn8) if wn8 else '#FFFFFF'
-            wr_color = _winrate_color(winrate) if winrate else '#FFFFFF'
-            b_color = _battles_color(battles) if battles else '#FFFFFF'
+            wn8_color = get_wn8_color(wn8) if wn8 else '#FFFFFF'
+            wr_color = get_winrate_color(winrate) if winrate else '#FFFFFF'
+            b_color = get_battles_color(battles) if battles else '#FFFFFF'
 
             if hasattr(player, 'setWn8Color'):
                 player.setWn8Color(wn8_color)
@@ -262,7 +217,7 @@ class PatchBattlePlayer(object):
 
             if hasattr(player, 'setBattles'):
                 if g_configParams.showBattles.value and battles:
-                    player.setBattles(_format_battles(battles))
+                    player.setBattles(get_format_battles(battles))
                 else:
                     player.setBattles('')
         except Exception as e:
