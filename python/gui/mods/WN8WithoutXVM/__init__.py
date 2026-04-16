@@ -1,6 +1,6 @@
 from .utils import logger
 from .stats import initialize_stats, finalize_stats
-from .views import PatchBattlePlayer, PanelView, PatchBattleLoading, PatchStatsExchange
+from .views import PatchBattlePlayer, PanelView, PatchBattleLoading
 
 __all__ = [
     'initialize',
@@ -9,13 +9,12 @@ __all__ = [
 
 g_patch_battle_player = None
 g_patch_battle_loading = None
-g_patch_stats_exchange = None
 g_panel_view = None
 g_battle_provider = None
 
 
 def initialize():
-    global g_patch_battle_player, g_patch_battle_loading, g_patch_stats_exchange
+    global g_patch_battle_player, g_patch_battle_loading
     global g_panel_view, g_battle_provider
     try:
         initialize_stats()
@@ -31,11 +30,6 @@ def initialize():
             g_patch_battle_loading = PatchBattleLoading(g_stats_manager)
             g_patch_battle_loading.apply_patches()
             logger.debug('[WN8WithoutXVM] PatchBattleLoading created and applied')
-
-        if g_patch_stats_exchange is None:
-            g_patch_stats_exchange = PatchStatsExchange(g_stats_manager)
-            g_patch_stats_exchange.apply_patches()
-            logger.debug('[WN8WithoutXVM] PatchStatsExchange created and applied')
 
         if g_panel_view is None:
             g_panel_view = PanelView(g_stats_manager)
@@ -54,7 +48,7 @@ def initialize():
 
 
 def finalize():
-    global g_patch_battle_player, g_patch_battle_loading, g_patch_stats_exchange
+    global g_patch_battle_player, g_patch_battle_loading
     global g_panel_view, g_battle_provider
     try:
         if g_battle_provider:
@@ -66,11 +60,6 @@ def finalize():
             g_panel_view.destroy()
             g_panel_view = None
             logger.debug('[WN8WithoutXVM] PanelView finalized')
-
-        if g_patch_stats_exchange:
-            g_patch_stats_exchange.remove_patches()
-            g_patch_stats_exchange = None
-            logger.debug('[WN8WithoutXVM] PatchStatsExchange finalized')
 
         if g_patch_battle_loading:
             g_patch_battle_loading.remove_patches()

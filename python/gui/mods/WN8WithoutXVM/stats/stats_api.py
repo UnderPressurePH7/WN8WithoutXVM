@@ -1,4 +1,5 @@
 import time
+from collections import deque
 
 import BigWorld
 from wg_async import wg_async, AsyncReturn
@@ -31,14 +32,18 @@ TANKS_FIELDS = ','.join((
 
 _CACHE_LIFETIME = 3 * 24 * 60 * 60
 _CACHE_VERSION = 1
-_API_MIN_REQ_INTERVAL = 5
+_QUEUE_INTERVAL = 0.25
+_COOLDOWN_AFTER_FAIL = 30.0
 
 
 class StatsAPI(object):
 
     def __init__(self):
         self._mem_cache = {}
-        self._pending = set()
+        self._waiters = {}
+        self._queue = deque()
+        self._queued = set()
+        self._worker_active = False
         self._last_req_time = {}
         self._disk_cache = DiskCache('player_stats.dat',
                                      version=_CACHE_VERSION,
@@ -141,74 +146,83 @@ class StatsAPI(object):
             logger.exception('[StatsAPI] Error computing stats for %s', accountId)
             raise AsyncReturn(None)
 
-    def get_player_stats(self, accountId, callback):
+    def get_player_stats(self, accountId, callback=None):
         cacheKey = str(accountId)
 
         if cacheKey in self._mem_cache:
             cached = self._mem_cache[cacheKey]
-            logger.debug('[StatsAPI] mem-cache hit for %s', accountId)
-            BigWorld.callback(0.0, lambda: callback(accountId, cached))
+            if callback is not None:
+                BigWorld.callback(0.0, lambda: callback(accountId, cached))
             return
 
         on_disk = self._disk_cache.get(cacheKey)
         if on_disk is not None:
-            logger.debug('[StatsAPI] disk-cache hit for %s', accountId)
             self._mem_cache[cacheKey] = on_disk
-            BigWorld.callback(0.0, lambda: callback(accountId, on_disk))
-            return
-
-        if cacheKey in self._pending:
-            logger.debug('[StatsAPI] dedup pending for %s', accountId)
-            self._wait_pending(cacheKey, accountId, callback)
+            if callback is not None:
+                BigWorld.callback(0.0, lambda: callback(accountId, on_disk))
             return
 
         now = time.time()
         last = self._last_req_time.get(cacheKey, 0)
-        if last and (now - last) < _API_MIN_REQ_INTERVAL:
-            logger.debug('[StatsAPI] throttled for %s (%.1fs since last)',
-                         accountId, now - last)
-            BigWorld.callback(0.0, lambda: callback(accountId, None))
+        if last and (now - last) < _COOLDOWN_AFTER_FAIL and cacheKey not in self._queued:
+            if callback is not None:
+                BigWorld.callback(0.0, lambda: callback(accountId, None))
             return
 
-        self._pending.add(cacheKey)
-        self._last_req_time[cacheKey] = now
+        if callback is not None:
+            self._waiters.setdefault(cacheKey, []).append(callback)
+
+        if cacheKey not in self._queued:
+            self._queued.add(cacheKey)
+            self._queue.append(accountId)
+            logger.debug('[StatsAPI] enqueued %s (queue size=%d)', accountId, len(self._queue))
+            self._pump_queue()
+
+    def _pump_queue(self):
+        if self._worker_active:
+            return
+        if not self._queue:
+            return
+
+        accountId = self._queue.popleft()
+        cacheKey = str(accountId)
+        self._worker_active = True
+        self._last_req_time[cacheKey] = time.time()
+        logger.debug('[StatsAPI] dequeued %s (remaining=%d)', accountId, len(self._queue))
 
         @wg_async
         def worker():
+            stats = None
             try:
                 stats = yield self._compute_stats(accountId)
                 if stats:
                     self._mem_cache[cacheKey] = stats
                     self._disk_cache.set(cacheKey, stats)
-                BigWorld.callback(0.0, lambda: callback(accountId, stats))
             except Exception:
                 logger.exception('[StatsAPI] worker failed for %s', accountId)
-                BigWorld.callback(0.1, lambda: callback(accountId, None))
             finally:
-                self._pending.discard(cacheKey)
+                self._queued.discard(cacheKey)
+                self._dispatch_waiters(cacheKey, accountId, stats)
+                self._worker_active = False
+                BigWorld.callback(_QUEUE_INTERVAL, self._pump_queue)
 
         worker()
 
-    def _wait_pending(self, cacheKey, accountId, callback):
-        attempts = {'n': 0}
-
-        def _poll():
-            attempts['n'] += 1
-            if cacheKey not in self._pending:
-                stats = self._mem_cache.get(cacheKey) or self._disk_cache.get(cacheKey)
-                callback(accountId, stats)
-                return
-            if attempts['n'] > 60:
-                callback(accountId, None)
-                return
-            BigWorld.callback(0.5, _poll)
-
-        BigWorld.callback(0.5, _poll)
+    def _dispatch_waiters(self, cacheKey, accountId, stats):
+        callbacks = self._waiters.pop(cacheKey, [])
+        for cb in callbacks:
+            try:
+                BigWorld.callback(0.0, lambda c=cb, s=stats: c(accountId, s))
+            except Exception:
+                logger.exception('[StatsAPI] dispatch waiter error')
 
     def clear_cache(self):
         self._mem_cache.clear()
-        self._pending.clear()
+        self._queued.clear()
+        self._queue.clear()
+        self._waiters.clear()
         self._last_req_time.clear()
+        self._worker_active = False
         logger.debug('[StatsAPI] in-memory cache cleared')
 
     def fini(self):

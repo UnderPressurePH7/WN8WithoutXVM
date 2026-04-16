@@ -20,6 +20,7 @@ from ..utils import logger
 TYPE_PP = 'pp'
 TYPE_TAB = 'tab'
 WN8_PLAYER_PANEL_ALIAS = 'wn8wx_playerPanel'
+AS3_FLASH_COMPONENT_NAME = 'playerPanel'
 
 
 class PlayerPanelMeta(BaseDAAPIComponent):
@@ -585,7 +586,7 @@ if g_entitiesFactories.getSettings(WN8_PLAYER_PANEL_ALIAS) is None:
 
     try:
         g_entitiesFactories.addSettings(ComponentSettings(
-            WN8_PLAYER_PANEL_ALIAS,
+            AS3_FLASH_COMPONENT_NAME,
             PlayerPanelMeta,
             ScopeTemplates.DEFAULT_SCOPE
         ))
