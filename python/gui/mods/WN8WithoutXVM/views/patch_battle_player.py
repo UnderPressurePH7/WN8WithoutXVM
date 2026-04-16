@@ -236,9 +236,17 @@ class PatchBattlePlayer(object):
         return self._patches_applied
 
     def remove_patches(self):
-        if not self._patches_applied:
-            return True
         try:
+            try:
+                if self._stats_manager is not None:
+                    self._stats_manager.remove_update_callback(self._on_stats_updated)
+            except Exception as e:
+                logger.debug('[PatchBattlePlayer] callback unsubscribe failed: %s', e)
+
+            if not self._patches_applied:
+                self._active_players.clear()
+                return True
+
             from gui.impl.gen.view_models.common.battle_player import BattlePlayer
             from gui.impl.battle.battle_page.tab_view import TabView
 
