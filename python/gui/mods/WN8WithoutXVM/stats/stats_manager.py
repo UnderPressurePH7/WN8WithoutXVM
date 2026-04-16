@@ -64,10 +64,6 @@ class StatsManager(object):
         wn8 = int(raw_stats.get('wn8', 0))
         winrate = round(float(raw_stats.get('winrate', 0)), 2)
         battles = int(raw_stats.get('battles', 0))
-        avg_damage = int(raw_stats.get('avg_damage', 0))
-        dpg = int(raw_stats.get('dpg', 0))
-        survival = round(float(raw_stats.get('survival', 0)), 2)
-        dmg_ratio = round(float(raw_stats.get('dmg_ratio', 0)), 2)
 
         return {
             'wn8': wn8,
@@ -75,15 +71,7 @@ class StatsManager(object):
             'winrate': winrate,
             'winrate_color': get_winrate_color(winrate),
             'battles': battles,
-            'battles_color': get_battles_color(battles),
-            'avg_damage': avg_damage,
-            'avg_damage_color': get_wn8_color(avg_damage / 10) if avg_damage > 0 else '#FFFFFF',
-            'dpg': dpg,
-            'dpg_color': get_wn8_color(dpg / 10) if dpg > 0 else '#FFFFFF',
-            'survival': survival,
-            'survival_color': get_survival_color(survival),
-            'dmg_ratio': dmg_ratio,
-            'dmg_ratio_color': get_dmg_ratio_color(dmg_ratio)
+            'battles_color': get_battles_color(battles)
         }
 
     def clear_cache(self):
