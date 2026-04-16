@@ -51,42 +51,6 @@ class Config(object):
                 body=Translator.SHOW_BATTLES_BODY
             )
 
-            self.configTemplate.addParameterToColumn1(
-                "showAvgDamage",
-                header=Translator.SHOW_AVG_DAMAGE_HEADER,
-                body=Translator.SHOW_AVG_DAMAGE_BODY
-            )
-
-            self.configTemplate.addParameterToColumn1(
-                "showDpg",
-                header=Translator.SHOW_DPG_HEADER,
-                body=Translator.SHOW_DPG_BODY
-            )
-
-            self.configTemplate.addParameterToColumn1(
-                "showSurvival",
-                header=Translator.SHOW_SURVIVAL_HEADER,
-                body=Translator.SHOW_SURVIVAL_BODY
-            )
-
-            self.configTemplate.addParameterToColumn1(
-                "showDmgRatio",
-                header=Translator.SHOW_DMG_RATIO_HEADER,
-                body=Translator.SHOW_DMG_RATIO_BODY
-            )
-
-            self.configTemplate.addParameterToColumn2(
-                "panelEnabled",
-                header=Translator.PANEL_ENABLED_HEADER,
-                body=Translator.PANEL_ENABLED_BODY
-            )
-
-            self.configTemplate.addParameterToColumn2(
-                "panelShowWn8",
-                header=Translator.PANEL_SHOW_WN8_HEADER,
-                body=Translator.PANEL_SHOW_WN8_BODY
-            )
-
             self.configTemplate.addParameterToColumn2(
                 "panelWinratePosition",
                 header=Translator.PANEL_WINRATE_POSITION_HEADER,
@@ -94,21 +58,9 @@ class Config(object):
             )
 
             self.configTemplate.addParameterToColumn2(
-                "showLoading",
-                header=Translator.SHOW_LOADING_HEADER,
-                body=Translator.SHOW_LOADING_BODY
-            )
-
-            self.configTemplate.addParameterToColumn2(
                 "wgApiRegion",
                 header=Translator.WG_API_REGION_HEADER,
                 body=Translator.WG_API_REGION_BODY
-            )
-
-            self.configTemplate.addParameterToColumn2(
-                "wgApiKey",
-                header=Translator.WG_API_KEY_HEADER,
-                body=Translator.WG_API_KEY_BODY
             )
 
             template = self.configTemplate.generateTemplate()

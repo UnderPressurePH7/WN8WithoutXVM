@@ -111,27 +111,11 @@ class TranslationManager(object):
             "showWinrate.body": "Display winrate percentage in battle",
             "showBattles.header": "Show Battles",
             "showBattles.body": "Display number of battles",
-            "showAvgDamage.header": "Show Average Damage",
-            "showAvgDamage.body": "Display average damage per battle",
-            "showDpg.header": "Show DPG",
-            "showDpg.body": "Display damage per game in Tab menu",
-            "showSurvival.header": "Show Survival",
-            "showSurvival.body": "Display survival rate in Tab menu",
-            "showDmgRatio.header": "Show Damage Ratio",
-            "showDmgRatio.body": "Display damage ratio in Tab menu",
-            "panelEnabled.header": "Enable Players Panel",
-            "panelEnabled.body": "Show stats on players panel (team ears)",
-            "panelShowWn8.header": "Show WN8 on Panel",
-            "panelShowWn8.body": "Display WN8 near vehicle icon on players panel",
             "panelWinratePosition.header": "Winrate Position on Panel",
             "panelWinratePosition.body": "Where to show winrate on players panel",
             "winratePosition.nearIcon": "Near vehicle icon",
             "winratePosition.beforeVehicle": "Before vehicle name",
             "winratePosition.none": "Don't show",
-            "showLoading.header": "Show on Loading Screen",
-            "showLoading.body": "Display WN8 in the battle loading screen team rosters",
-            "wgApiKey.header": "WG API Application ID",
-            "wgApiKey.body": "Wargaming Public API application_id",
             "wgApiRegion.header": "WG API Region",
             "wgApiRegion.body": "Server region used for WG Public API requests",
             "region.eu": "Europe",
@@ -202,20 +186,7 @@ class Translator(object):
     SHOW_WINRATE_BODY = TranslationElement("showWinrate.body")
     SHOW_BATTLES_HEADER = TranslationElement("showBattles.header")
     SHOW_BATTLES_BODY = TranslationElement("showBattles.body")
-    SHOW_AVG_DAMAGE_HEADER = TranslationElement("showAvgDamage.header")
-    SHOW_AVG_DAMAGE_BODY = TranslationElement("showAvgDamage.body")
 
-    SHOW_DPG_HEADER = TranslationElement("showDpg.header")
-    SHOW_DPG_BODY = TranslationElement("showDpg.body")
-    SHOW_SURVIVAL_HEADER = TranslationElement("showSurvival.header")
-    SHOW_SURVIVAL_BODY = TranslationElement("showSurvival.body")
-    SHOW_DMG_RATIO_HEADER = TranslationElement("showDmgRatio.header")
-    SHOW_DMG_RATIO_BODY = TranslationElement("showDmgRatio.body")
-
-    PANEL_ENABLED_HEADER = TranslationElement("panelEnabled.header")
-    PANEL_ENABLED_BODY = TranslationElement("panelEnabled.body")
-    PANEL_SHOW_WN8_HEADER = TranslationElement("panelShowWn8.header")
-    PANEL_SHOW_WN8_BODY = TranslationElement("panelShowWn8.body")
     PANEL_WINRATE_POSITION_HEADER = TranslationElement("panelWinratePosition.header")
     PANEL_WINRATE_POSITION_BODY = TranslationElement("panelWinratePosition.body")
 
@@ -223,11 +194,6 @@ class Translator(object):
     WINRATE_BEFORE_VEHICLE = TranslationElement("winratePosition.beforeVehicle")
     WINRATE_NONE = TranslationElement("winratePosition.none")
 
-    SHOW_LOADING_HEADER = TranslationElement("showLoading.header")
-    SHOW_LOADING_BODY = TranslationElement("showLoading.body")
-
-    WG_API_KEY_HEADER = TranslationElement("wgApiKey.header")
-    WG_API_KEY_BODY = TranslationElement("wgApiKey.body")
     WG_API_REGION_HEADER = TranslationElement("wgApiRegion.header")
     WG_API_REGION_BODY = TranslationElement("wgApiRegion.body")
 

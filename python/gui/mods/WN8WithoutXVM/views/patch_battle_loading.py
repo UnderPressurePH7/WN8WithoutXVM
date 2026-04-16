@@ -89,8 +89,6 @@ class PatchBattleLoading(object):
     def _register(self):
         if self._registered:
             return
-        if not g_configParams.showLoading.value:
-            return
         try:
             if self.sessionProvider is None:
                 logger.debug('[PatchBattleLoading] No sessionProvider yet')

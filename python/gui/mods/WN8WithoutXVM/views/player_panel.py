@@ -19,6 +19,7 @@ from ..utils import logger
 
 TYPE_PP = 'pp'
 TYPE_TAB = 'tab'
+WN8_PLAYER_PANEL_ALIAS = 'wn8wx_playerPanel'
 
 
 class PlayerPanelMeta(BaseDAAPIComponent):
@@ -559,7 +560,7 @@ class Events(object):
 
             self.impl = True
             ServicesLocator.appLoader.getDefBattleApp().loadView(
-                SFViewLoadParams('playerPanel', 'playerPanel'), {}
+                SFViewLoadParams(WN8_PLAYER_PANEL_ALIAS, WN8_PLAYER_PANEL_ALIAS), {}
             )
             logger.debug('[PlayerPanel] View loaded')
         except Exception as e:
@@ -568,22 +569,30 @@ class Events(object):
 
 g_events = None
 
-if not g_entitiesFactories.getSettings('playerPanel'):
+if g_entitiesFactories.getSettings(WN8_PLAYER_PANEL_ALIAS) is None:
+    g_events = Events()
     try:
-        g_events = Events()
         g_entitiesFactories.addSettings(ViewSettings(
-            'playerPanel',
+            WN8_PLAYER_PANEL_ALIAS,
             View,
             'playerPanel.swf',
             WindowLayer.WINDOW,
             None,
             ScopeTemplates.GLOBAL_SCOPE
         ))
+    except Exception as e:
+        logger.debug('[PlayerPanel] ViewSettings already registered: %s', e)
+
+    try:
         g_entitiesFactories.addSettings(ComponentSettings(
-            'playerPanel',
+            WN8_PLAYER_PANEL_ALIAS,
             PlayerPanelMeta,
             ScopeTemplates.DEFAULT_SCOPE
         ))
+    except Exception as e:
+        logger.debug('[PlayerPanel] ComponentSettings already registered: %s', e)
+
+    try:
         g_eventBus.addListener(
             events.ComponentEvent.COMPONENT_REGISTERED,
             g_events.onComponentRegistered,
@@ -591,4 +600,4 @@ if not g_entitiesFactories.getSettings('playerPanel'):
         )
         logger.debug('[PlayerPanel] Initialized')
     except Exception as e:
-        logger.error('[PlayerPanel] Init error: %s', e)
+        logger.error('[PlayerPanel] EventBus listener failed: %s', e)

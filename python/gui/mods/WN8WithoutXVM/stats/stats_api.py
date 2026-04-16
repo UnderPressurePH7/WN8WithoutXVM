@@ -59,12 +59,6 @@ class StatsAPI(object):
         return 'eu'
 
     def _get_app_id(self):
-        try:
-            value = getattr(g_configParams, 'wgApiKey', None)
-            if value is not None and value.value:
-                return str(value.value).strip() or DEFAULT_APP_ID
-        except Exception:
-            pass
         return DEFAULT_APP_ID
 
     def _build_url(self, path, params):

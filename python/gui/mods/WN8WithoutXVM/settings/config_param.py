@@ -1,7 +1,6 @@
 from .config_param_types import (
     CheckboxParameter,
     DropdownParameter,
-    TextInputParameter,
     OptionItem
 )
 from .translations import Translator
@@ -42,41 +41,6 @@ class ConfigParams(object):
             defaultValue=True
         )
 
-        self.showAvgDamage = CheckboxParameter(
-            ['show-avg-damage'],
-            defaultValue=False
-        )
-
-        self.showDpg = CheckboxParameter(
-            ['show-dpg'],
-            defaultValue=False
-        )
-
-        self.showSurvival = CheckboxParameter(
-            ['show-survival'],
-            defaultValue=False
-        )
-
-        self.showDmgRatio = CheckboxParameter(
-            ['show-dmg-ratio'],
-            defaultValue=False
-        )
-
-        self.showLoading = CheckboxParameter(
-            ['show-loading'],
-            defaultValue=True
-        )
-
-        self.panelEnabled = CheckboxParameter(
-            ['panel-enabled'],
-            defaultValue=True
-        )
-
-        self.panelShowWn8 = CheckboxParameter(
-            ['panel-show-wn8'],
-            defaultValue=True
-        )
-
         self.panelWinratePosition = DropdownParameter(
             ['panel-winrate-position'],
             [
@@ -95,11 +59,6 @@ class ConfigParams(object):
                 OptionItem(ApiRegion.ASIA, 2, Translator.REGION_ASIA),
             ],
             defaultValue=ApiRegion.EU
-        )
-
-        self.wgApiKey = TextInputParameter(
-            ['wg-api-key'],
-            defaultValue='demo'
         )
 
     def items(self):

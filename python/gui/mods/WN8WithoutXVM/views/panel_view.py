@@ -94,8 +94,6 @@ class PanelView(CallbackDelayer):
     def _reapplyAllColors(self):
         if not self._hasPanelCoreUI or not g_events or not g_events.viewLoad:
             return
-        if not g_configParams.panelEnabled.value:
-            return
         try:
             arena = self._getArena()
             if not arena or not arena.vehicles:
@@ -114,7 +112,7 @@ class PanelView(CallbackDelayer):
             logger.error('[PanelView] _reapplyAllColors error: %s', e)
 
     def _createContainers(self):
-        if self._containersCreated or not g_configParams.panelEnabled.value:
+        if self._containersCreated:
             return
         if not self._hasPanelCoreUI or not g_events or not g_events.viewLoad:
             logger.debug('[PanelView] Cannot create containers - not ready')
@@ -185,8 +183,6 @@ class PanelView(CallbackDelayer):
     def _processAllPlayers(self):
         if not self._hasPanelCoreUI or not g_events or not g_events.viewLoad:
             return
-        if not g_configParams.panelEnabled.value:
-            return
         try:
             if not self._containersCreated:
                 self._createContainers()
@@ -241,9 +237,7 @@ class PanelView(CallbackDelayer):
                 'vehicle': self._getVehicleName(vehicleData),
             }
 
-            if g_configParams.panelShowWn8.value:
-                self._applyPlayerNameWithWN8(listItem, playerInfo, team)
-
+            self._applyPlayerNameWithWN8(listItem, playerInfo, team)
             self._applyWinrateDisplay(vehicleID, listItem, playerInfo, team)
         except Exception as e:
             logger.error('[PanelView] _applyStatsToVehicle error for %s: %s', vehicleID, e)
@@ -322,19 +316,18 @@ class PanelView(CallbackDelayer):
             winrateColor = stats.get('winrate_color', '#FFFFFF')
             nick = vehicleData.get('name', '')
 
-            if g_configParams.panelShowWn8.value:
-                if team == 'left':
-                    fullText = "<font color='{}'>{}</font> <font color='#CCCCCC'>{}</font>".format(
-                        wn8Color, wn8, nick[:14])
-                    cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
-                else:
-                    fullText = "<font color='#CCCCCC'>{}</font> <font color='{}'>{}</font>".format(
-                        nick[:14], wn8Color, wn8)
-                    cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
-                if hasattr(listItem, 'playerNameFullTF') and listItem.playerNameFullTF:
-                    listItem.playerNameFullTF.htmlText = fullText
-                if hasattr(listItem, 'playerNameCutTF') and listItem.playerNameCutTF:
-                    listItem.playerNameCutTF.htmlText = cutText
+            if team == 'left':
+                fullText = "<font color='{}'>{}</font> <font color='#CCCCCC'>{}</font>".format(
+                    wn8Color, wn8, nick[:14])
+                cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
+            else:
+                fullText = "<font color='#CCCCCC'>{}</font> <font color='{}'>{}</font>".format(
+                    nick[:14], wn8Color, wn8)
+                cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
+            if hasattr(listItem, 'playerNameFullTF') and listItem.playerNameFullTF:
+                listItem.playerNameFullTF.htmlText = fullText
+            if hasattr(listItem, 'playerNameCutTF') and listItem.playerNameCutTF:
+                listItem.playerNameCutTF.htmlText = cutText
 
             if g_configParams.panelWinratePosition.value == WinratePosition.BEFORE_VEHICLE:
                 vehicleName = self._getVehicleName(vehicleData)
