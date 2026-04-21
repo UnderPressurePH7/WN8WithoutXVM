@@ -551,14 +551,6 @@ class Events(object):
         try:
             if event.alias != BATTLE_VIEW_ALIASES.PLAYERS_PANEL:
                 return
-
-            player = BigWorld.player()
-            arena = getattr(player, 'arena', None) if player is not None else None
-            from ..battle_modes import is_supported
-            if not is_supported(arena):
-                logger.debug('[PlayerPanel] Battle mode not supported - skipping view load')
-                return
-
             self.impl = True
             ServicesLocator.appLoader.getDefBattleApp().loadView(
                 SFViewLoadParams(WN8_PLAYER_PANEL_ALIAS, WN8_PLAYER_PANEL_ALIAS), {}
