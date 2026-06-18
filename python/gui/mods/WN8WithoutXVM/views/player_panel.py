@@ -47,6 +47,14 @@ class PlayerPanelMeta(BaseDAAPIComponent):
     def as_setStatsDataS(self, vehicleID, data):
         if self._isDAAPIInited():
             try:
+                from gui.mods.WN8WithoutXVM.settings.config import g_configParams
+                if g_configParams.colorizeVehicleIcon.value and vehicleID in self._vehicleNameColorCache:
+                    cached = self._vehicleNameColorCache.get(vehicleID)
+                    if cached and isinstance(data, dict) and 'vehicleName' in data:
+                        color, name = cached
+                        if color:
+                            data = dict(data)
+                            data['vehicleName'] = u"<font color='{}'>{}</font>".format(color, name)
                 return self.flashObject.as_setStatsData(vehicleID, data)
             except Exception as e:
                 logger.error('[PlayerPanel] as_setStatsDataS error: %s', e)
@@ -148,6 +156,14 @@ class PlayerPanelMeta(BaseDAAPIComponent):
                 logger.error('[PlayerPanel] as_getPlayersPanelS error: %s', e)
         return None
 
+    def as_getVehicleTFPositionsS(self, vehicleIDs):
+        if self._isDAAPIInited():
+            try:
+                return self.flashObject.as_getVehicleTFPositions(vehicleIDs)
+            except Exception as e:
+                logger.error('[PlayerPanel] as_getVehicleTFPositionsS error: %s', e)
+        return []
+
     def as_vehicleIconColorS(self, vehicleID, color):
         if self._isDAAPIInited():
             try:
@@ -183,7 +199,6 @@ class Events(object):
         self.updateMode = Event.Event()
         self._currentPanelState = -1
         self._patchesApplied = False
-
         self._applyPatches()
 
         self.configPP = {
@@ -258,6 +273,22 @@ class Events(object):
             originalPanelMetaTrySetPanelModeByMouse = PlayersPanelMeta.tryToSetPanelModeByMouse
             originalUpdateVehiclesInfo = BattleStatisticsDataController.updateVehiclesInfo
             originalUpdateVehiclesStats = BattleStatisticsDataController.updateVehiclesStats
+
+            # Patch invalidateVehicleStatus — WoT calls this to redraw each panel row
+            # This is the ONLY reliable hook for restoring vehicleTF color
+            _invalidate_names = ['invalidateVehicleStatus', 'invalidateVehicleInfo',
+                                  '_invalidateVehicle', 'as_invalidateVehicleStatusS']
+            for _method_name in _invalidate_names:
+                if hasattr(PlayersPanel, _method_name):
+                    _orig_inv = getattr(PlayersPanel, _method_name)
+                    def _make_patched_inv(_orig, _name):
+                        def _patched_inv(ppSelf, *a, **kw):
+                            result = _orig(ppSelf, *a, **kw)
+                            self._scheduleUpdateModeBurst()
+                            return result
+                        return _patched_inv
+                    setattr(PlayersPanel, _method_name, _make_patched_inv(_orig_inv, _method_name))
+                    logger.debug('[PlayerPanel] Patched PlayersPanel.%s', _method_name)
             originalSetInitialMode = PlayersPanel.setInitialMode
             originalSetLargeMode = PlayersPanel.setLargeMode
 
@@ -320,6 +351,7 @@ class Events(object):
                 def patchedHandleShowExtendedInfo(ppSelf, value):
                     result = originalHandleShowExtendedInfo(ppSelf, value)
                     self._onPanelModeChanged(ppSelf)
+                    self._scheduleUpdateModeBurst()
                     return result
 
                 PlayersPanel._PlayersPanel__handleShowExtendedInfo = patchedHandleShowExtendedInfo
@@ -330,6 +362,7 @@ class Events(object):
                 def patchedSetOverrideExInfo(ppSelf, value):
                     result = originalSetOverrideExInfo(ppSelf, value)
                     self._onPanelModeChanged(ppSelf)
+                    self._scheduleUpdateModeBurst()
                     return result
 
                 PlayersPanel.setOverrideExInfo = patchedSetOverrideExInfo
@@ -339,6 +372,11 @@ class Events(object):
 
         except Exception as e:
             logger.error('[PlayerPanel] Failed to apply patches: %s', e)
+
+    def _scheduleUpdateModeBurst(self):
+        self.updateMode()
+        for delay in (0.05, 0.15, 0.30, 0.60, 1.00, 1.50, 2.00, 3.00):
+            BigWorld.callback(delay, self.updateMode)
 
     def _onPanelModeChanged(self, ppSelf=None):
         if not self.impl:
@@ -370,6 +408,7 @@ class Events(object):
         logger.debug('[PlayerPanel] Populated')
         BigWorld.callback(0.1, lambda: self.onUIReady(self, 'playerPanel', baseSelf))
 
+
     def _dispose(self, baseSelf):
         self.impl = False
         self.viewLoad = False
@@ -396,10 +435,15 @@ class Events(object):
         if not self.componentUI:
             return None
         try:
-            return self.componentUI.as_setStatsDataS(vehicleID, data)
+            result = self.componentUI.as_setStatsDataS(vehicleID, data)
+            # After WoT updates vehicleTF, apply our WN8 color if available
+            self._applyVehicleNameColorFromCache(vehicleID)
+            return result
         except Exception as e:
             logger.error('[PlayerPanel] setStatsData error: %s', e)
         return None
+
+
 
     def clearCache(self):
         if self.componentUI:
@@ -496,6 +540,15 @@ class Events(object):
                 logger.error('[PlayerPanel] shadowListItem error: %s', e)
         return None
 
+    def getVehicleTFPositions(self, vehicleIDs):
+        """Returns list of {vehicleID, x, y, w, h, side, visible} from Flash stage coords."""
+        if self.componentUI and vehicleIDs:
+            try:
+                return self.componentUI.as_getVehicleTFPositionsS(list(vehicleIDs)) or []
+            except Exception as e:
+                logger.error('[PlayerPanel] getVehicleTFPositions error: %s', e)
+        return []
+
     def vehicleIconColor(self, vehicleID, color):
         if not vehicleID or not color:
             return None
@@ -506,6 +559,10 @@ class Events(object):
             except Exception as e:
                 logger.error('[PlayerPanel] vehicleIconColor error: %s', e)
         return None
+
+    def vehicleNameColor(self, vehicleID, color, vehicleName):
+        """Kept for compatibility — actual coloring done by PanelNameOverlay."""
+        pass
 
     def extendedSetting(self, container, vehicleID):
         if self.componentUI:

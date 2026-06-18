@@ -14,7 +14,11 @@ __all__ = [
     'get_wn8_color',
     'get_winrate_color',
     'get_battles_color',
-    'get_format_battles'
+    'get_format_battles',
+    'ANON_RATING_TOKEN',
+    'ANON_ICON_PATH',
+    'ANON_ICON_PANEL_SIZE',
+    'get_anonymize_icon_html'
 ]
 
 
@@ -31,6 +35,17 @@ def cancelCallbackSafe(cbid):
 
 logger = logging.getLogger('WN8WithoutXVM')
 logger.setLevel(logging.DEBUG if os.path.isfile('.debug_mods') else logging.ERROR)
+
+ANON_RATING_TOKEN = '__BATTLESTATS_ANON__'
+ANON_ICON_PATH = 'gui/maps/icons/battlestats/anonymize.png'
+ANON_ICON_IMG_PATH = 'img://' + ANON_ICON_PATH
+ANON_ICON_PANEL_SIZE = 14
+
+def get_anonymize_icon_html(size=ANON_ICON_PANEL_SIZE, vspace=-3):
+    return "<img src='%s' width='%s' height='%s' vspace='%s' />" % (
+        ANON_ICON_IMG_PATH, int(size), int(size), int(vspace)
+    )
+
 
 
 _overrides = []

@@ -4,6 +4,7 @@ package com.under_pressure.WN8WithoutXVM.battle
    import flash.events.Event;
    import flash.filters.DropShadowFilter;
    import flash.geom.ColorTransform;
+   import flash.geom.Point;
    import flash.text.AntiAliasType;
    import flash.text.TextField;
    import flash.text.TextFieldAutoSize;
@@ -340,6 +341,34 @@ package com.under_pressure.WN8WithoutXVM.battle
       public function as_getPPListItem(vehicleID:int):*
       {
          return this.getPPListItem(vehicleID);
+      }
+
+      public function as_getVehicleTFPositions(vehicleIDs:Array):Array
+      {
+         var result:Array = [];
+         if (!vehicleIDs) return result;
+         try
+         {
+            for each (var vid:int in vehicleIDs)
+            {
+               var listItem:* = this.getPPListItem(vid);
+               if (!listItem) continue;
+               var tf:* = listItem.hasOwnProperty("vehicleTF") ? listItem.vehicleTF : null;
+               if (!tf) continue;
+               var pt:Point = tf.localToGlobal(new Point(0, 0));
+               var itemPt:Point = listItem.localToGlobal(new Point(0, 0));
+               var stageW:Number = stage ? stage.stageWidth : 1920;
+               var side:String = itemPt.x < (stageW * 0.5) ? "left" : "right";
+               result.push({vehicleID: vid, x: pt.x, y: pt.y,
+                             w: tf.width, h: tf.height, side: side,
+                             visible: tf.visible && listItem.visible});
+            }
+         }
+         catch (e:Error)
+         {
+            this.logError("as_getVehicleTFPositions: " + e.message);
+         }
+         return result;
       }
 
       public function as_getPlayersPanel():*
@@ -683,6 +712,27 @@ package com.under_pressure.WN8WithoutXVM.battle
             tf.x = anchor.x - tf.textWidth - TAB_OVERLAY_OFFSET_X;
          }
          tf.y = anchor.y;
+      }
+
+      public function as_vehicleNameColor(vehicleID:int, colorStr:String, vehicleName:String):void
+      {
+         if (this._isDisposed) return;
+         try
+         {
+            var listItem:* = this.getPPListItem(vehicleID);
+            if (!listItem) return;
+            if (!listItem.hasOwnProperty("vehicleTF")) return;
+            var tf:TextField = listItem.vehicleTF as TextField;
+            if (!tf) return;
+            if (colorStr && colorStr.length > 0 && vehicleName && vehicleName.length > 0)
+               tf.htmlText = "<font color='" + colorStr + "'>" + vehicleName + "</font>";
+            else
+               tf.htmlText = vehicleName;
+         }
+         catch (e:Error)
+         {
+            this.logError("as_vehicleNameColor: " + e.message);
+         }
       }
 
       public function as_vehicleIconColor(vehicleID:int, colorStr:String):void

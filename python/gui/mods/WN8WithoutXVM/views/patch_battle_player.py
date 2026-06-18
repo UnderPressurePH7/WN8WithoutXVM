@@ -7,7 +7,8 @@ from ..utils import (
     get_wn8_color,
     get_winrate_color,
     get_battles_color,
-    get_format_battles
+    get_format_battles,
+    ANON_RATING_TOKEN
 )
 from ..settings.config_param import g_configParams
 
@@ -43,6 +44,7 @@ class PatchBattlePlayer(object):
         self._stats_manager = stats_manager
         # vehicleId -> (player, vehicleInfo, original_vehicle_name, tabView weakref)
         self._active_players = {}
+        self._anonymous_vehicles = set()
         self._original_property_count = None
         self._base_index = None
         stats_manager.add_update_callback(self._on_stats_updated)
@@ -138,7 +140,7 @@ class PatchBattlePlayer(object):
                     return
                 try:
                     for field in EXTRA_FIELDS:
-                        default = '#FFFFFF' if field.endswith('_color') else ''
+                        default = ''
                         bp_self._addStringProperty(field, default)
                 except Exception as e:
                     logger.debug('[PatchBattlePlayer] addStringProperty failed: %s', e)
@@ -216,35 +218,107 @@ class PatchBattlePlayer(object):
             logger.error('[PatchBattlePlayer] Traceback: %s', traceback.format_exc())
             return False
 
+
+    def _is_anonymous_player(self, player, vehicleInfo):
+        try:
+            # ВАЖЛИВО: не використовуємо isFakeNameVisible.
+            # У WoT/Gameface це часто означає, що UI-іконка/поле анонімайзера видиме,
+            # а не те, що конкретний гравець є анонімом. Через це всі рядки ставали anon.
+            if player is not None:
+                for name in ('getIsAnonymized', 'getAnonymized', 'isAnonymized', 'isAnonymous'):
+                    attr = getattr(player, name, None)
+                    if attr:
+                        try:
+                            if attr() if callable(attr) else attr:
+                                return True
+                        except Exception:
+                            pass
+            if vehicleInfo:
+                for key in ('isAnonymized', 'isAnonymous'):
+                    if vehicleInfo.get(key):
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def _set_anonymous_values(self, player, account_id, original_vehicle_name):
+        try:
+            if account_id and hasattr(self._stats_manager, 'set_anonymous_player'):
+                self._stats_manager.set_anonymous_player(account_id)
+
+            if hasattr(player, 'setWn8'):
+                player.setWn8(ANON_RATING_TOKEN)
+            if hasattr(player, 'setWn8Color'):
+                player.setWn8Color('')
+            if hasattr(player, 'setWinrate'):
+                player.setWinrate('')
+            if hasattr(player, 'setWinrateColor'):
+                player.setWinrateColor('')
+            if hasattr(player, 'setBattles'):
+                player.setBattles('')
+            if hasattr(player, 'setBattlesColor'):
+                player.setBattlesColor('')
+            if hasattr(player, 'setVehicleName'):
+                payload = SEP.join((
+                    original_vehicle_name or u'',
+                    ANON_RATING_TOKEN,
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    '',
+                    ''
+                ))
+                player.setVehicleName(payload)
+            return True
+        except Exception as e:
+            logger.debug('[PatchBattlePlayer] anonymous setValues failed: %s', e)
+            return False
+
     def _set_values(self, player, vehicleInfo, original_vehicle_name):
         try:
             account_id = vehicleInfo.get('accountDBID') if vehicleInfo else None
+            if self._is_anonymous_player(player, vehicleInfo):
+                try:
+                    vehicle_id = player.getVehicleId() if hasattr(player, 'getVehicleId') else None
+                    if vehicle_id:
+                        self._anonymous_vehicles.add(vehicle_id)
+                except Exception:
+                    pass
+                return self._set_anonymous_values(player, account_id, original_vehicle_name)
+            # Простий режим: якщо для гравця немає account_id або немає стати,
+            # у Tab залишалися прочерки. Ставимо туди anon-token, щоб TabView показав іконку.
             if not account_id:
-                return False
+                return self._set_anonymous_values(player, account_id, original_vehicle_name)
 
             stats = self._stats_manager.get_cached_stats(account_id)
             if not stats:
-                return False
+                return self._set_anonymous_values(player, account_id, original_vehicle_name)
 
             wn8 = int(stats.get('wn8', 0) or 0)
+            rating = int(stats.get('selected_rating') or wn8 or 0)
             winrate = float(stats.get('winrate', 0) or 0)
             battles = int(stats.get('battles', 0) or 0)
 
-            wn8_text = str(wn8) if g_configParams.showWn8.value and wn8 else ''
+            wn8_text = str(rating) if g_configParams.showWn8.value and rating else ''
             winrate_text = ('%.1f%%' % winrate) if g_configParams.showWinrate.value and winrate else ''
             battles_text = get_format_battles(battles) if g_configParams.showBattles.value and battles else ''
 
-            wn8_color = get_wn8_color(wn8) if wn8 else '#FFFFFF'
+            wn8_color = stats.get('selected_rating_color') or (get_wn8_color(rating) if rating else '#FFFFFF')
             wr_color = get_winrate_color(winrate) if winrate else '#FFFFFF'
             b_color = get_battles_color(battles) if battles else '#FFFFFF'
 
-            # Fill extra fields too, for clients where they work.
+            # Fill extra text fields too, but DO NOT send color strings through the
+            # BattlePlayer model. On this WoT client the TabView renders these
+            # extra color fields as visible text, so values like #FE7903 appear
+            # before the nickname. Panel colors still come from StatsManager.
             if hasattr(player, 'setWn8Color'):
-                player.setWn8Color(wn8_color)
+                player.setWn8Color('')
             if hasattr(player, 'setWinrateColor'):
-                player.setWinrateColor(wr_color)
+                player.setWinrateColor('')
             if hasattr(player, 'setBattlesColor'):
-                player.setBattlesColor(b_color)
+                player.setBattlesColor('')
             if hasattr(player, 'setWn8'):
                 player.setWn8(wn8_text)
             if hasattr(player, 'setWinrate'):
@@ -254,6 +328,7 @@ class PatchBattlePlayer(object):
 
             # Reliable transport for current Gameface: visible name is part [0].
             if hasattr(player, 'setVehicleName'):
+                vehicle_name_color = wn8_color if (g_configParams.colorizeVehicleIcon.value and wn8) else ''
                 payload = SEP.join((
                     original_vehicle_name or u'',
                     wn8_text,
@@ -262,10 +337,12 @@ class PatchBattlePlayer(object):
                     wr_color,
                     battles_text,
                     b_color,
+                    '',
+                    '',
                 ))
                 player.setVehicleName(payload)
 
-            logger.debug('[PatchBattlePlayer] values set acc=%s vehicle=%s wn8=%s wr=%s battles=%s',
+            logger.debug('[PatchBattlePlayer] values set acc=%s vehicle=%s rating=%s wr=%s battles=%s',
                          account_id, original_vehicle_name, wn8_text, winrate_text, battles_text)
             return True
         except Exception as e:
@@ -319,6 +396,7 @@ class PatchBattlePlayer(object):
                 TabView._invalidatePersonalInfo = self._original_invalidate_personal_info
 
             self._active_players.clear()
+            self._anonymous_vehicles.clear()
             self._patches_applied = False
             return True
         except Exception as e:

@@ -1,4 +1,4 @@
-.HorizontalBar_base_fa517 {
+﻿.HorizontalBar_base_fa517 {
     display: flex;
     width: 100%;
     height: 13rem;
@@ -666,6 +666,12 @@
     margin: 0 5rem 0 0;
     background-repeat: no-repeat;
     background-size: contain;
+}
+.UserInfo_badge_b0d39,
+.UserInfo_suffixBanner_a1f81,
+.UserInfo_suffixBadge_e6e7d,
+.UserInfo_suffixRibbon_b3197 {
+    display: none !important;
 }
 
 /* eslint-disable stylelint/scss/dollar-variable-pattern */
@@ -2551,8 +2557,8 @@
 }
 
 
-/* WN8WithoutXVM TAB stats */
-.WN8TabStats {
+/* BattleStats TAB stats */
+.BattleStatsTabStats {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
@@ -2563,33 +2569,33 @@
     white-space: nowrap;
     pointer-events: none;
 }
-.WN8TabStats_right {
+.BattleStatsTabStats_right {
     flex-direction: row-reverse;
     margin: -1rem 0 0 4rem;
 }
-.WN8TabStats_item {
+.BattleStatsTabStats_item {
     min-width: 23rem;
     text-align: center;
     text-shadow: 0 0 2rem #000, 0 0 3rem #000;
 }
-.WN8TabStats_battles {
+.BattleStatsTabStats_battles {
     min-width: 20rem;
 }
-.WN8TabStats_wr {
+.BattleStatsTabStats_wr {
     min-width: 34rem;
 }
-.WN8TabStats_wn8 {
+.BattleStatsTabStats_wn8 {
     min-width: 34rem;
 }
 
-/* WN8WithoutXVM TAB stats v3: keep nick visible */
+/* BattleStats TAB stats v3: keep nick visible */
 .UserInfo_user_info_ee23d {
     width: 210rem;
 }
 .UserInfo_nickname_wrapper_af103 {
     width: 181rem;
 }
-.WN8TabStats {
+.BattleStatsTabStats {
     display: flex;
     flex: 0 0 auto;
     align-items: center;
@@ -2600,34 +2606,61 @@
     white-space: nowrap;
     pointer-events: none;
 }
-.WN8TabStats_right {
+.BattleStatsTabStats_right {
     flex-direction: row-reverse;
     margin: -1rem 0 0 3rem;
 }
-.WN8TabStats_item {
+.BattleStatsTabStats_item {
     min-width: 22rem;
     text-align: center;
     text-shadow: 0 0 2rem #000, 0 0 3rem #000;
 }
-.WN8TabStats_battles {
+.BattleStatsTabStats_battles {
     min-width: 28rem;
 }
-.WN8TabStats_wr {
+.BattleStatsTabStats_tier {
+    min-width: 24rem;
+}
+.BattleStatsTabStats_wr {
     min-width: 31rem;
 }
-.WN8TabStats_wn8 {
+.BattleStatsTabStats_wn8 {
     min-width: 26rem;
 }
 
+.BattleStatsTabStats_wn8.BattleStatsTabStats_anonymize {
+    min-width: 14rem;
+    width: 14rem;
+    height: 12rem;
+    padding: 0;
+    color: transparent;
+    text-shadow: none;
+}
 
-/* WN8WithoutXVM TAB stats v4: stats before nickname */
-.WN8TabStats {
+.BattleStatsTabStats_anonymizeIcon {
+    align-items: center;
+    justify-content: center;
+    display: inline-flex;
+    flex: 0 0 14rem;
+}
+
+.BattleStatsTabStats_anonymizeImage {
+    display: block;
+    width: 12rem;
+    height: 12rem;
+    margin: 0 auto;
+    object-fit: contain;
+}
+
+
+/* BattleStats TAB stats v4: stats before nickname */
+.BattleStatsTabStats {
     order: -10;
     margin: -1rem 4rem 0 0;
 }
 
-.UserInfo_user_info__right_d5b63 .WN8TabStats,
-.WN8TabStats_right {
+.UserInfo_user_info__right_d5b63 .BattleStatsTabStats,
+.BattleStatsTabStats_right {
     order: -10;
     margin: -1rem 0 0 4rem;
 }
@@ -2636,13 +2669,13 @@
     min-width: 0;
 }
 
-/* WN8WithoutXVM TAB stats v6: allies stats left of nick, enemies stats right of nick */
-.WN8TabStats {
+/* BattleStats TAB stats v6: allies stats left of nick, enemies stats right of nick */
+.BattleStatsTabStats {
     order: 0 !important;
     flex: 0 0 auto;
     margin: -1rem 4rem 0 0;
 }
-.WN8TabStats_right {
+.BattleStatsTabStats_right {
     order: 0 !important;
     flex-direction: row;
     margin: -1rem 0 0 4rem;
@@ -2651,11 +2684,33 @@
     min-width: 0;
 }
 
-/* WN8WithoutXVM: force nickname to inherit WN8 color from data-bind-style-color */
+/* BattleStats: force nickname to inherit TBS color from data-bind-style-color */
 .UserInfo_userName_ff8dc,
 .UserInfo_userName_ff8dc .UserInfo_tooltip_trigger_e6ce7 {
     color: inherit;
 }
 .UserInfo_userNameWrapper__colorblind_c94be .UserInfo_userName_ff8dc .UserInfo_tooltip_trigger_e6ce7 {
     color: inherit;
+}
+
+/* BattleStats TAB stats v7: give nickname more room without changing font size. */
+.UserInfo_user_info_ee23d {
+    width: 230rem;
+}
+
+.UserInfo_nickname_wrapper_af103 {
+    width: 226rem;
+}
+
+.Player_base_fe348 .Player_vehicleNameWrapper_f1c80 {
+    width: 80rem;
+    margin-right: 8rem;
+}
+
+.Player_base_fe348 .Player_vehicleName_aa673 {
+    width: 74rem;
+}
+
+.Player_right_da422 .Player_base_fe348 .Player_vehicleNameWrapper_f1c80 {
+    margin: 0 0 0 8rem;
 }

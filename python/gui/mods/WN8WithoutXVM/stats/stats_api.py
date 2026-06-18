@@ -5,7 +5,7 @@ import BigWorld
 from wg_async import wg_async, AsyncReturn
 
 from ..utils import logger, fetch_data_with_retry
-from ..settings.config_param import g_configParams
+from ..settings.config_param import g_configParams, RatingMode
 from .wn8_calc import calc_overall_wn8_from_per_tank
 from .wn8_expected import g_wn8_expected
 from .disk_cache import DiskCache
@@ -16,6 +16,14 @@ REGION_HOSTS = {
     'na': 'https://api.worldoftanks.com',
     'asia': 'https://api.worldoftanks.asia',
 }
+
+TOMATO_SERVER_BY_REGION = {
+    'eu': 'eu',
+    'na': 'com',
+    'asia': 'asia',
+}
+
+TOMATO_API_HOST = 'https://api.tomato.gg'
 
 DEFAULT_APP_ID = 'bce57ac20af6b67b08be09fd66847ed9'
 
@@ -31,9 +39,56 @@ TANKS_FIELDS = ','.join((
 ))
 
 _CACHE_LIFETIME = 3 * 24 * 60 * 60
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2
 _QUEUE_INTERVAL = 0.25
 _COOLDOWN_AFTER_FAIL = 30.0
+
+
+def _as_int(value, default=0):
+    try:
+        if value is None:
+            return default
+        return int(round(float(value)))
+    except Exception:
+        return default
+
+
+def _as_float(value, default=0.0):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def _deep_get(data, path, default=None):
+    cur = data
+    for key in path:
+        if isinstance(cur, dict) and key in cur:
+            cur = cur.get(key)
+        else:
+            return default
+    return cur
+
+
+def _first_number(data, keys):
+    if not isinstance(data, dict):
+        return None
+    for key in keys:
+        if key in data and data.get(key) is not None:
+            return data.get(key)
+    lower_map = {}
+    for key, value in data.items():
+        try:
+            lower_map[str(key).lower()] = value
+        except Exception:
+            pass
+    for key in keys:
+        value = lower_map.get(str(key).lower())
+        if value is not None:
+            return value
+    return None
 
 
 class StatsAPI(object):
@@ -63,6 +118,52 @@ class StatsAPI(object):
             pass
         return 'eu'
 
+    def _get_tomato_server(self):
+        return TOMATO_SERVER_BY_REGION.get(self._get_region(), 'eu')
+
+    def _get_tomato_key(self):
+        try:
+            param = getattr(g_configParams, 'tomatoApiKey', None)
+            if param is not None:
+                key = param.value or ''
+                return str(key).strip()
+        except Exception:
+            pass
+        return ''
+
+    def _has_tomato_key(self):
+        key = self._get_tomato_key()
+        return bool(key)
+
+    def _get_rating_mode(self):
+        try:
+            return getattr(g_configParams.ratingMode, 'value', RatingMode.OVERALL_WN8)
+        except Exception:
+            return RatingMode.OVERALL_WN8
+
+    def _requires_tomato(self):
+        mode = self._get_rating_mode()
+        return mode in (RatingMode.RECENT_WNX, RatingMode.RECENT_WN8, RatingMode.OVERALL_WNX)
+
+    def _has_tomato_for_mode(self, stats):
+        if not self._requires_tomato():
+            return True
+        if not self._has_tomato_key():
+            return True
+        if not isinstance(stats, dict):
+            return False
+        mode = self._get_rating_mode()
+        if mode == RatingMode.RECENT_WNX:
+            return _as_int(stats.get('recent_wnx')) > 0
+        if mode == RatingMode.RECENT_WN8:
+            return _as_int(stats.get('recent_wn8')) > 0
+        if mode == RatingMode.OVERALL_WNX:
+            return _as_int(stats.get('overall_wnx') or stats.get('wnx')) > 0
+        return True
+
+    def _needs_tomato_refresh(self, stats):
+        return self._requires_tomato() and self._has_tomato_key() and not self._has_tomato_for_mode(stats)
+
     def _get_app_id(self):
         return DEFAULT_APP_ID
 
@@ -72,6 +173,20 @@ class StatsAPI(object):
         params['application_id'] = self._get_app_id()
         query = '&'.join('{}={}'.format(k, v) for k, v in params.items())
         return '{}{}?{}'.format(host, path, query)
+
+    def _build_tomato_url(self, path, params=None):
+        params = params or {}
+        query = '&'.join('{}={}'.format(k, v) for k, v in params.items())
+        if query:
+            return '{}{}?{}'.format(TOMATO_API_HOST, path, query)
+        return '{}{}'.format(TOMATO_API_HOST, path)
+
+    def _tomato_headers(self):
+        return [
+            ('Content-Type', 'application/json'),
+            ('User-Agent', 'WN8WithoutXVM/0.0.2'),
+            ('x-api-key', self._get_tomato_key())
+        ]
 
     @wg_async
     def _fetch_per_tank_stats(self, accountId):
@@ -108,6 +223,84 @@ class StatsAPI(object):
             })
         raise AsyncReturn(flat)
 
+    def _parse_tomato_recent(self, response):
+        result = {}
+        data = (response or {}).get('data') or {}
+        battles = data.get('battles') or {}
+        block = None
+        if isinstance(battles, dict):
+            block = battles.get('1000') or battles.get(1000)
+        if not isinstance(block, dict):
+            return result
+
+        result['recent_wn8'] = _as_int(_first_number(block, ('wn8', 'WN8')))
+        result['recent_wnx'] = _as_int(_first_number(block, ('wnx', 'WNX')))
+        recent_wr = _first_number(block, ('winrate', 'wr', 'winsPercent'))
+        if recent_wr is not None:
+            result['recent_winrate'] = _as_float(recent_wr)
+        recent_battles = _first_number(block, ('battles', 'battleCount'))
+        if recent_battles is not None:
+            result['recent_battles'] = _as_int(recent_battles)
+        return result
+
+    def _parse_tomato_overall(self, response):
+        result = {}
+        data = (response or {}).get('data') or {}
+        if not isinstance(data, dict):
+            return result
+
+        candidates = [data]
+        for key in ('overall', 'summary', 'player', 'stats'):
+            value = data.get(key)
+            if isinstance(value, dict):
+                candidates.append(value)
+
+        for block in candidates:
+            wnx = _first_number(block, ('wnx', 'WNX'))
+            wn8 = _first_number(block, ('wn8', 'WN8'))
+            wr = _first_number(block, ('winrate', 'wr', 'winsPercent'))
+            battles = _first_number(block, ('battles', 'battleCount'))
+            if wnx is not None and not result.get('overall_wnx'):
+                result['overall_wnx'] = _as_int(wnx)
+                result['wnx'] = result['overall_wnx']
+            if wn8 is not None and not result.get('tomato_overall_wn8'):
+                result['tomato_overall_wn8'] = _as_int(wn8)
+            if wr is not None and not result.get('tomato_winrate'):
+                result['tomato_winrate'] = _as_float(wr)
+            if battles is not None and not result.get('tomato_battles'):
+                result['tomato_battles'] = _as_int(battles)
+        return result
+
+    @wg_async
+    def _fetch_tomato_recent(self, accountId):
+        if not self._has_tomato_key():
+            raise AsyncReturn({})
+        path = '/api/player/recents/{}/{}'.format(self._get_tomato_server(), accountId)
+        url = self._build_tomato_url(path, {'battles': '1000', 'cache': 'true'})
+        try:
+            data = yield fetch_data_with_retry(url, retries=1, delay=1, headers=self._tomato_headers(), timeout=8.0)
+            raise AsyncReturn(self._parse_tomato_recent(data))
+        except AsyncReturn:
+            raise
+        except Exception:
+            logger.exception('[StatsAPI] Tomato recent fetch failed for %s', accountId)
+            raise AsyncReturn({})
+
+    @wg_async
+    def _fetch_tomato_overall(self, accountId):
+        if not self._has_tomato_key():
+            raise AsyncReturn({})
+        path = '/api/player/overall/{}/{}'.format(self._get_tomato_server(), accountId)
+        url = self._build_tomato_url(path, {'cache': 'true'})
+        try:
+            data = yield fetch_data_with_retry(url, retries=1, delay=1, headers=self._tomato_headers(), timeout=8.0)
+            raise AsyncReturn(self._parse_tomato_overall(data))
+        except AsyncReturn:
+            raise
+        except Exception:
+            logger.exception('[StatsAPI] Tomato overall fetch failed for %s', accountId)
+            raise AsyncReturn({})
+
     @wg_async
     def _compute_stats(self, accountId):
         try:
@@ -130,6 +323,11 @@ class StatsAPI(object):
 
             stats = {
                 'wn8': wn8,
+                'overall_wn8': wn8,
+                'recent_wn8': 0,
+                'wnx': 0,
+                'overall_wnx': 0,
+                'recent_wnx': 0,
                 'winrate': winrate,
                 'battles': total_battles,
                 'avg_damage': dpg,
@@ -137,6 +335,18 @@ class StatsAPI(object):
                 'survival': survival,
                 'dmg_ratio': 0.0,
             }
+
+            if self._has_tomato_key() and self._requires_tomato():
+                mode = self._get_rating_mode()
+                if mode in (RatingMode.RECENT_WNX, RatingMode.RECENT_WN8):
+                    recent_stats = yield self._fetch_tomato_recent(accountId)
+                    if recent_stats:
+                        stats.update(recent_stats)
+                if mode == RatingMode.OVERALL_WNX:
+                    overall_stats = yield self._fetch_tomato_overall(accountId)
+                    if overall_stats:
+                        stats.update(overall_stats)
+
             logger.debug('[StatsAPI] Computed stats for %s: %s', accountId, stats)
             raise AsyncReturn(stats)
 
@@ -151,12 +361,13 @@ class StatsAPI(object):
 
         if cacheKey in self._mem_cache:
             cached = self._mem_cache[cacheKey]
-            if callback is not None:
-                BigWorld.callback(0.0, lambda: callback(accountId, cached))
-            return
+            if not self._needs_tomato_refresh(cached):
+                if callback is not None:
+                    BigWorld.callback(0.0, lambda: callback(accountId, cached))
+                return
 
         on_disk = self._disk_cache.get(cacheKey)
-        if on_disk is not None:
+        if on_disk is not None and not self._needs_tomato_refresh(on_disk):
             self._mem_cache[cacheKey] = on_disk
             if callback is not None:
                 BigWorld.callback(0.0, lambda: callback(accountId, on_disk))

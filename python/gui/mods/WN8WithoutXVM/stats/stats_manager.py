@@ -2,8 +2,10 @@ from ..utils import (
     logger,
     get_wn8_color,
     get_winrate_color,
-    get_battles_color
+    get_battles_color,
+    ANON_RATING_TOKEN
 )
+from ..settings.config_param import g_configParams, RatingMode
 
 
 class StatsManager(object):
@@ -60,19 +62,69 @@ class StatsManager(object):
         cache_key = str(account_id)
         return cache_key in self._stats_cache
 
+    def _select_rating(self, raw_stats):
+        try:
+            mode = getattr(g_configParams.ratingMode, 'value', RatingMode.OVERALL_WN8)
+        except Exception:
+            mode = RatingMode.OVERALL_WN8
+
+        if mode == RatingMode.RECENT_WNX:
+            value = int(raw_stats.get('recent_wnx') or 0)
+            return value, get_wn8_color(value), 'WNX', 'recent_wnx'
+        if mode == RatingMode.RECENT_WN8:
+            value = int(raw_stats.get('recent_wn8') or 0)
+            return value, get_wn8_color(value), 'WN8', 'recent_wn8'
+        if mode == RatingMode.OVERALL_WNX:
+            value = int(raw_stats.get('overall_wnx') or raw_stats.get('wnx') or 0)
+            return value, get_wn8_color(value), 'WNX', 'overall_wnx'
+
+        value = int(raw_stats.get('overall_wn8') or raw_stats.get('wn8') or 0)
+        return value, get_wn8_color(value), 'WN8', 'overall_wn8'
+
     def _format_stats(self, raw_stats):
         wn8 = int(raw_stats.get('wn8', 0))
         winrate = round(float(raw_stats.get('winrate', 0)), 2)
         battles = int(raw_stats.get('battles', 0))
+        selected_rating, selected_rating_color, selected_rating_name, selected_rating_key = self._select_rating(raw_stats)
 
         return {
             'wn8': wn8,
+            'overall_wn8': int(raw_stats.get('overall_wn8') or wn8),
+            'recent_wn8': int(raw_stats.get('recent_wn8') or 0),
+            'wnx': int(raw_stats.get('wnx') or 0),
+            'overall_wnx': int(raw_stats.get('overall_wnx') or raw_stats.get('wnx') or 0),
+            'recent_wnx': int(raw_stats.get('recent_wnx') or 0),
+            'selected_rating': selected_rating,
+            'selected_rating_color': selected_rating_color,
+            'selected_rating_name': selected_rating_name,
+            'selected_rating_key': selected_rating_key,
             'wn8_color': get_wn8_color(wn8),
             'winrate': winrate,
             'winrate_color': get_winrate_color(winrate),
             'battles': battles,
             'battles_color': get_battles_color(battles)
         }
+
+
+    def set_anonymous_player(self, account_id):
+        if not account_id:
+            return
+        cache_key = str(account_id)
+        self._stats_cache[cache_key] = {
+            'anonymous': True,
+            'wn8': 0,
+            'wn8_text': ANON_RATING_TOKEN,
+            'selected_rating': 0,
+            'selected_rating_color': '',
+            'selected_rating_name': '',
+            'selected_rating_key': '',
+            'wn8_color': '',
+            'winrate': 0,
+            'winrate_color': '',
+            'battles': 0,
+            'battles_color': ''
+        }
+        self._notify_update(account_id)
 
     def clear_cache(self):
         self._stats_cache.clear()

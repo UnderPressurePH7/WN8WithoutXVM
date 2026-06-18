@@ -111,8 +111,22 @@ class TranslationManager(object):
             "showWinrate.body": "Display winrate percentage in battle",
             "showBattles.header": "Show Battles",
             "showBattles.body": "Display number of battles",
-            "panelWinratePosition.header": "Winrate Position on Panel",
-            "panelWinratePosition.body": "Where to show winrate on players panel",
+            "panelWinratePosition.header": "Позиція показника у вухах",
+            "panelWinratePosition.body": "Де показувати вибраний показник у бокових панелях гравців",
+            "panelMetric.header": "Що показувати у вухах",
+            "panelMetric.body": "Вибери, що показувати у бокових панелях: відсоток перемог або рейтинг WN8/WNX",
+            "panelMetric.winrate": "Відсоток перемог",
+            "panelMetric.wn8": "WN8 / WNX рейтинг",
+            "ratingMode.header": "Режим рейтингу",
+            "ratingMode.body": "Стандартний режим без ключа — Загальний WN8. Для WN8/WNX за 1000 боїв і для WNX потрібен Tomato.gg API key.",
+            "ratingMode.recentWnx": "WNX за 1000 боїв (потрібен Tomato key)",
+            "ratingMode.recentWn8": "WN8 за 1000 боїв (потрібен Tomato key)",
+            "ratingMode.overallWn8": "Загальний WN8 (без ключа)",
+            "ratingMode.overallWnx": "Загальний WNX (потрібен Tomato key)",
+            "tomatoApiKey.header": "Tomato.gg API key",
+            "tomatoApiKey.body": "Щоб увімкнути статистику за 1000 боїв: встав Tomato.gg API key і вибери режим WNX за 1000 боїв або WN8 за 1000 боїв.",
+            "tomatoApiKey.note": "Без ключа стандартно працює тільки Загальний WN8. Режими з позначкою Tomato key без ключа будуть скидатися на Загальний WN8.",
+            "tomatoApiKey.attention": "Не показуй і не передавай свій Tomato API key іншим.",
             "winratePosition.nearIcon": "Near vehicle icon",
             "winratePosition.beforeVehicle": "Before vehicle name",
             "winratePosition.none": "Don't show",
@@ -120,7 +134,9 @@ class TranslationManager(object):
             "wgApiRegion.body": "Server region used for WG Public API requests",
             "region.eu": "Europe",
             "region.na": "North America",
-            "region.asia": "Asia"
+            "region.asia": "Asia",
+            "colorizeVehicleIcon.header": "Colorize Vehicle Icon",
+            "colorizeVehicleIcon.body": "Tint tank icons with WN8 color in the player panel and Tab screen"
         }
 
     def _clearCache(self):
@@ -189,6 +205,22 @@ class Translator(object):
 
     PANEL_WINRATE_POSITION_HEADER = TranslationElement("panelWinratePosition.header")
     PANEL_WINRATE_POSITION_BODY = TranslationElement("panelWinratePosition.body")
+    PANEL_METRIC_HEADER = TranslationElement("panelMetric.header")
+    PANEL_METRIC_BODY = TranslationElement("panelMetric.body")
+    PANEL_METRIC_WINRATE = TranslationElement("panelMetric.winrate")
+    PANEL_METRIC_WN8 = TranslationElement("panelMetric.wn8")
+
+    RATING_MODE_HEADER = TranslationElement("ratingMode.header")
+    RATING_MODE_BODY = TranslationElement("ratingMode.body")
+    RATING_RECENT_WNX = TranslationElement("ratingMode.recentWnx")
+    RATING_RECENT_WN8 = TranslationElement("ratingMode.recentWn8")
+    RATING_OVERALL_WN8 = TranslationElement("ratingMode.overallWn8")
+    RATING_OVERALL_WNX = TranslationElement("ratingMode.overallWnx")
+
+    TOMATO_API_KEY_HEADER = TranslationElement("tomatoApiKey.header")
+    TOMATO_API_KEY_BODY = TranslationElement("tomatoApiKey.body")
+    TOMATO_API_KEY_NOTE = TranslationElement("tomatoApiKey.note")
+    TOMATO_API_KEY_ATTENTION = TranslationElement("tomatoApiKey.attention")
 
     WINRATE_NEAR_ICON = TranslationElement("winratePosition.nearIcon")
     WINRATE_BEFORE_VEHICLE = TranslationElement("winratePosition.beforeVehicle")
@@ -200,6 +232,9 @@ class Translator(object):
     REGION_EU = TranslationElement("region.eu")
     REGION_NA = TranslationElement("region.na")
     REGION_ASIA = TranslationElement("region.asia")
+
+    COLORIZE_VEHICLE_ICON_HEADER = TranslationElement("colorizeVehicleIcon.header")
+    COLORIZE_VEHICLE_ICON_BODY = TranslationElement("colorizeVehicleIcon.body")
 
 
 def getTranslation(key):

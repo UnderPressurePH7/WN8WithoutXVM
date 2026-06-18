@@ -18,5 +18,7 @@
     "wgApiRegion.body": "Region serwera dla zapytań WG Public API",
     "region.eu": "Europa",
     "region.na": "Ameryka Północna",
-    "region.asia": "Azja"
+    "region.asia": "Azja",
+    "colorizeVehicleIcon.header": "Kolorowanie nazwy pojazdu",
+    "colorizeVehicleIcon.body": "Wyświetlaj nazwę czołgu w kolorze WN8 na panelu graczy i w zakładce Tab"
 }

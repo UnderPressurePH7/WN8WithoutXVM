@@ -2,11 +2,19 @@ import BigWorld
 from helpers import dependency
 from helpers.CallbackDelayer import CallbackDelayer
 from skeletons.gui.battle_session import IBattleSessionProvider
+from gui.shared import g_eventBus, EVENT_BUS_SCOPE
+from gui.shared.events import GameEvent
 
 from gui.battle_control.arena_info import vos_collections
 
-from ..utils import logger
-from ..settings.config_param import g_configParams, WinratePosition
+from ..utils import logger, get_anonymize_icon_html, ANON_ICON_PANEL_SIZE
+from ..settings.config_param import g_configParams, WinratePosition, PanelMetric
+
+try:
+    from .panel_name_overlay import g_overlay
+except Exception as e:
+    logger.error('[PanelView] panel_name_overlay import failed: %s', e)
+    g_overlay = None
 
 try:
     from .player_panel import g_events, TYPE_PP
@@ -21,6 +29,8 @@ except Exception as e:
 class PanelView(CallbackDelayer):
 
     CONTAINER_PP_WINRATE = 'wn8withoutxvm_pp_winrate'
+    CONTAINER_PP_ANON = 'wn8withoutxvm_pp_anon'
+    CONTAINER_VEHICLE_NAME = 'wn8withoutxvm_vehicle_name'
 
     sessionProvider = dependency.descriptor(IBattleSessionProvider)
 
@@ -66,6 +76,9 @@ class PanelView(CallbackDelayer):
             if g_events:
                 g_events.updateMode += self._onUpdateMode
                 g_events.onUIReady += self._onUIReady
+            g_eventBus.addListener(GameEvent.FULL_STATS, self._onFullStats, EVENT_BUS_SCOPE.BATTLE)
+            if g_overlay:
+                g_overlay.init()
             self._isInitialized = True
             if g_events and g_events.viewLoad:
                 self.delayCallback(0.3, self._initializeContainers)
@@ -89,7 +102,15 @@ class PanelView(CallbackDelayer):
         if currentTime - self._lastUpdateTime < 0.05:
             return
         self._lastUpdateTime = currentTime
-        self.delayCallback(0.02, self._reapplyAllColors)
+        self._scheduleReapplyAllColors()
+
+    def _onFullStats(self, event):
+        self._scheduleReapplyAllColors()
+
+    def _scheduleReapplyAllColors(self):
+        self._reapplyAllColors()
+        for delay in (0.05, 0.15, 0.30, 0.60, 1.00, 1.50, 2.00, 3.00):
+            BigWorld.callback(delay, self._reapplyAllColors)
 
     def _reapplyAllColors(self):
         if not self._hasPanelCoreUI or not g_events or not g_events.viewLoad:
@@ -123,6 +144,14 @@ class PanelView(CallbackDelayer):
 
         try:
             self._createdContainers = []
+            g_events.createPP(self.CONTAINER_VEHICLE_NAME, self._buildVehicleNameConfig())
+            self._createdContainers.append(self.CONTAINER_VEHICLE_NAME)
+            logger.debug('[PanelView] Vehicle name overlay container created')
+
+            g_events.createPP(self.CONTAINER_PP_ANON, self._buildPpAnonConfig())
+            self._createdContainers.append(self.CONTAINER_PP_ANON)
+            logger.debug('[PanelView] PP anonymous icon container created')
+
             if g_configParams.panelWinratePosition.value == WinratePosition.NEAR_ICON:
                 g_events.createPP(self.CONTAINER_PP_WINRATE, self._buildPpWinrateConfig())
                 self._createdContainers.append(self.CONTAINER_PP_WINRATE)
@@ -139,9 +168,32 @@ class PanelView(CallbackDelayer):
         except Exception as e:
             logger.error('[PanelView] _createContainers error: %s', e)
 
+
+    def _buildPpAnonConfig(self):
+        state_offsets_left = {'state%d' % s: {'x': 10, 'y': 3} for s in range(8)}
+        state_offsets_right = {'state%d' % s: {'x': -24, 'y': 3} for s in range(8)}
+        return {
+            'textKey': 'pp_anon',
+            'holder': 'vehicleIcon',
+            'child': 'vehicleTF',
+            'left': {
+                'x': 10, 'y': 3, 'width': 20, 'height': 20, 'align': 'left',
+                'hideInStates': [8], 'stateOffsets': state_offsets_left,
+            },
+            'right': {
+                'x': -24, 'y': 3, 'width': 20, 'height': 20, 'align': 'right',
+                'hideInStates': [8], 'stateOffsets': state_offsets_right,
+            },
+            'shadow': {
+                'distance': 0, 'angle': 90, 'color': '#000000',
+                'alpha': 100, 'size': 2, 'strength': 200,
+            },
+        }
+
     def _buildPpWinrateConfig(self):
-        state_offsets_left = {'state%d' % s: {'x': 28, 'y': 4} for s in range(8)}
-        state_offsets_right = {'state%d' % s: {'x': -78, 'y': 4} for s in range(8)}
+        # Трохи ближче до танка/іконки, як у режимі з ніками.
+        state_offsets_left = {'state%d' % s: {'x': 20, 'y': 4} for s in range(8)}
+        state_offsets_right = {'state%d' % s: {'x': -70, 'y': 4} for s in range(8)}
         return {
             'textKey': 'pp_winrate',
             'holder': 'vehicleIcon',
@@ -159,6 +211,29 @@ class PanelView(CallbackDelayer):
                 'alpha': 100, 'size': 2, 'strength': 200,
             },
         }
+
+    def _buildVehicleNameConfig(self):
+        state_offsets = {'state%d' % s: {'x': 0, 'y': 0} for s in range(8)}
+        return {
+            'textKey': 'vehicle_name',
+            'holder': 'vehicleTF',
+            'child': 'vehicleTF',
+            'left': {
+                'x': 0, 'y': 0, 'width': 105, 'height': 20, 'align': 'right',
+                'hideInStates': [8], 'stateOffsets': state_offsets,
+            },
+            'right': {
+                'x': 0, 'y': 0, 'width': 105, 'height': 20, 'align': 'right',
+                'hideInStates': [8], 'stateOffsets': state_offsets,
+            },
+            'shadow': {
+                'distance': 0, 'angle': 90, 'color': '#000000',
+                'alpha': 100, 'size': 2, 'strength': 200,
+            },
+        }
+
+    def _applyOverlayName(self, vehicleID, playerInfo, team):
+        return
 
     def _getArena(self):
         if self._arena is not None:
@@ -201,12 +276,16 @@ class PanelView(CallbackDelayer):
             self._buildVehicleMaps()
             for vehicleID, vehicleData in arena.vehicles.items():
                 accountDBID = vehicleData.get('accountDBID')
-                if not accountDBID:
+                stats = self._statsManager.get_cached_stats(accountDBID) if accountDBID else None
+
+                # Простий режим: якщо для рядка немає стати і в оригіналі там були прочерки,
+                # показуємо біля нього іконку анонімайзера.
+                if not stats:
+                    self._applyNoStatsAnonymousIcon(vehicleID, True)
                     continue
-                stats = self._statsManager.get_cached_stats(accountDBID)
-                if stats:
-                    self._applyStatsToVehicle(vehicleID, vehicleData, stats, arenaDP)
-                    self._updatedVehicles.add(vehicleID)
+
+                self._applyStatsToVehicle(vehicleID, vehicleData, stats, arenaDP)
+                self._updatedVehicles.add(vehicleID)
 
             self._pushTabOverlays(arenaDP)
         except Exception as e:
@@ -224,13 +303,21 @@ class PanelView(CallbackDelayer):
             isAlly = arenaDP.isAllyTeam(vehicleData['team'])
             team = 'left' if isAlly else 'right'
 
-            if not accountDBID:
+            if stats and stats.get('anonymous'):
                 self._applyAnonymousPlayer(listItem, vehicleID, team)
                 return
+            if not accountDBID:
+                self._applyNoStatsAnonymousIcon(vehicleID, True)
+                return
+
+            self._applyNoStatsAnonymousIcon(vehicleID, False)
 
             playerInfo = {
                 'wn8': stats.get('wn8', 0),
                 'wn8_color': stats.get('wn8_color', '#FFFFFF'),
+                'selected_rating': stats.get('selected_rating', stats.get('wn8', 0)),
+                'selected_rating_color': stats.get('selected_rating_color', stats.get('wn8_color', '#FFFFFF')),
+                'selected_rating_name': stats.get('selected_rating_name', 'WN8'),
                 'winrate': stats.get('winrate', 0),
                 'winrate_color': stats.get('winrate_color', '#FFFFFF'),
                 'nick': vehicleData.get('name', ''),
@@ -239,61 +326,156 @@ class PanelView(CallbackDelayer):
 
             self._applyPlayerNameWithWN8(listItem, playerInfo, team)
             self._applyWinrateDisplay(vehicleID, listItem, playerInfo, team)
+            self._applyVehicleNameColor(vehicleID, listItem, playerInfo)
+            self._applyOverlayName(vehicleID, playerInfo, team)
         except Exception as e:
             logger.error('[PanelView] _applyStatsToVehicle error for %s: %s', vehicleID, e)
 
-    def _applyPlayerNameWithWN8(self, listItem, playerInfo, team):
+    def _applyVehicleNameColor(self, vehicleID, listItem, playerInfo):
         try:
-            wn8 = playerInfo['wn8']
-            wn8Color = playerInfo['wn8_color']
-            nick = playerInfo['nick']
+            vehicleName = playerInfo.get('vehicle') or ''
+            if not vehicleName:
+                return
+            if self.CONTAINER_VEHICLE_NAME not in self._createdContainers:
+                return
+            if not self._isVehicleNameVisible(listItem):
+                self._setVehicleNameOverlay(vehicleID, '')
+                return
 
-            if team == 'left':
-                fullText = "<font color='{}'>{}</font> <font color='#CCCCCC'>{}</font>".format(
-                    wn8Color, wn8, nick[:14])
-                cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
+            vehicleColor = playerInfo.get('selected_rating_color') or playerInfo.get('wn8_color') or '#FFFFFF'
+            if g_configParams.panelWinratePosition.value == WinratePosition.BEFORE_VEHICLE:
+                statText, statColor = self._getPanelMetricText(playerInfo)
+                if statText:
+                    text = "<font color='{}'>{}</font> <font color='{}'>{}</font>".format(
+                        statColor, statText, vehicleColor, vehicleName)
+                else:
+                    text = "<font color='{}'>{}</font>".format(vehicleColor, vehicleName)
             else:
-                fullText = "<font color='#CCCCCC'>{}</font> <font color='{}'>{}</font>".format(
-                    nick[:14], wn8Color, wn8)
-                cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
+                text = "<font color='{}'>{}</font>".format(vehicleColor, vehicleName)
 
-            if hasattr(listItem, 'playerNameFullTF') and listItem.playerNameFullTF:
-                listItem.playerNameFullTF.htmlText = fullText
-            if hasattr(listItem, 'playerNameCutTF') and listItem.playerNameCutTF:
-                listItem.playerNameCutTF.htmlText = cutText
+            self._clearOriginalVehicleName(listItem)
+            self._setVehicleNameOverlay(vehicleID, text)
         except Exception as e:
-            logger.error('[PanelView] _applyPlayerNameWithWN8 error: %s', e)
+            logger.error('[PanelView] _applyVehicleNameColor error for %s: %s', vehicleID, e)
+
+    def _isVehicleNameVisible(self, listItem):
+        try:
+            if not listItem or (hasattr(listItem, 'visible') and not listItem.visible):
+                return False
+            if not hasattr(listItem, 'vehicleTF') or not listItem.vehicleTF:
+                return False
+            tf = listItem.vehicleTF
+            if hasattr(tf, 'visible') and not tf.visible:
+                return False
+            if hasattr(tf, 'width') and tf.width <= 1:
+                return False
+            if hasattr(tf, 'height') and tf.height <= 1:
+                return False
+            return True
+        except Exception:
+            return True
+
+    def _setVehicleNameOverlay(self, vehicleID, text):
+        g_events.update(self.CONTAINER_VEHICLE_NAME, {
+            'vehicleID': vehicleID,
+            'text': text,
+        })
+        g_events.updatePosition(self.CONTAINER_VEHICLE_NAME, vehicleID)
+
+    def _clearOriginalVehicleName(self, listItem):
+        try:
+            if hasattr(listItem, 'vehicleTF') and listItem.vehicleTF:
+                listItem.vehicleTF.htmlText = ''
+                listItem.vehicleTF.text = ''
+                listItem.vehicleTF.alpha = 0
+        except Exception:
+            pass
+
+    def _applyPlayerNameWithWN8(self, listItem, playerInfo, team):
+        return
+
+    def _getPanelMetricText(self, playerInfo):
+        try:
+            metric = g_configParams.panelMetric.value
+        except Exception:
+            metric = PanelMetric.WINRATE
+
+        if metric == PanelMetric.WN8:
+            value = int(playerInfo.get('selected_rating') or playerInfo.get('wn8') or 0)
+            if not value:
+                return '', '#FFFFFF'
+            return str(value), playerInfo.get('selected_rating_color') or playerInfo.get('wn8_color') or '#FFFFFF'
+
+        try:
+            value = float(playerInfo.get('winrate') or 0)
+        except Exception:
+            value = 0
+        if not value:
+            return '', '#FFFFFF'
+        valueText = ('%.2f' % value).rstrip('0').rstrip('.') + '%'
+        return valueText, playerInfo.get('winrate_color') or '#FFFFFF'
 
     def _applyWinrateDisplay(self, vehicleID, listItem, playerInfo, team):
         winratePosition = g_configParams.panelWinratePosition.value
+        statText, statColor = self._getPanelMetricText(playerInfo)
         if winratePosition == WinratePosition.NEAR_ICON:
             if self.CONTAINER_PP_WINRATE in self._createdContainers:
-                winrateText = "<font color='{}' size='10'><b>{}%</b></font>".format(
-                    playerInfo['winrate_color'], playerInfo['winrate'])
+                displayText = "<font color='{}' size='10'><b>{}</b></font>".format(
+                    statColor, statText) if statText else ''
                 g_events.update(self.CONTAINER_PP_WINRATE, {
                     'vehicleID': vehicleID,
-                    'text': winrateText,
+                    'text': displayText,
                 })
                 g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
         elif winratePosition == WinratePosition.BEFORE_VEHICLE:
+            if not self._isVehicleNameVisible(listItem):
+                self._setVehicleNameOverlay(vehicleID, '')
+                return
             vehicleName = playerInfo['vehicle']
-            winrateText = "<font color='{}'>{}%</font> {}".format(
-                playerInfo['winrate_color'], playerInfo['winrate'], vehicleName)
-            if hasattr(listItem, 'vehicleTF') and listItem.vehicleTF:
-                listItem.vehicleTF.htmlText = winrateText
+            if statText:
+                displayText = "<font color='{}'>{}</font> <font color='{}'>{}</font>".format(
+                    statColor, statText, playerInfo.get('selected_rating_color') or playerInfo['wn8_color'], vehicleName)
+            else:
+                displayText = "<font color='{}'>{}</font>".format(playerInfo.get('selected_rating_color') or playerInfo['wn8_color'], vehicleName)
+            if self.CONTAINER_VEHICLE_NAME in self._createdContainers:
+                self._clearOriginalVehicleName(listItem)
+                self._setVehicleNameOverlay(vehicleID, displayText)
+
+    def _applyAnonymousIcon(self, vehicleID, visible):
+        try:
+            if self.CONTAINER_PP_ANON in self._createdContainers:
+                g_events.update(self.CONTAINER_PP_ANON, {
+                    'vehicleID': vehicleID,
+                    'text': get_anonymize_icon_html(ANON_ICON_PANEL_SIZE) if visible else '',
+                })
+                g_events.updatePosition(self.CONTAINER_PP_ANON, vehicleID)
+        except Exception as e:
+            logger.error('[PanelView] update anonymous panel icon failed for %s: %s', vehicleID, e)
+
+    def _applyNoStatsAnonymousIcon(self, vehicleID, visible=True):
+        # Для цього моду немає 100% надійного прапорця аноніма в panel data.
+        # Тому використовуємо просту логіку: немає стати / були прочерки => ставимо іконку.
+        self._applyAnonymousIcon(vehicleID, visible)
+        if visible and self.CONTAINER_PP_WINRATE in self._createdContainers:
+            try:
+                g_events.update(self.CONTAINER_PP_WINRATE, {
+                    'vehicleID': vehicleID,
+                    'text': '',
+                })
+                g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
+            except Exception:
+                pass
 
     def _applyAnonymousPlayer(self, listItem, vehicleID, team):
         try:
-            if hasattr(listItem, 'playerNameFullTF') and listItem.playerNameFullTF:
-                listItem.playerNameFullTF.htmlText = u'<font color="#888888">Anonymous</font>'
-            if hasattr(listItem, 'playerNameCutTF') and listItem.playerNameCutTF:
-                listItem.playerNameCutTF.htmlText = u'<font color="#888888">Anon</font>'
+            self._applyAnonymousIcon(vehicleID, True)
             if g_configParams.panelWinratePosition.value == WinratePosition.NEAR_ICON:
                 if self.CONTAINER_PP_WINRATE in self._createdContainers:
                     g_events.update(self.CONTAINER_PP_WINRATE, {
                         'vehicleID': vehicleID,
                         'text': '',
                     })
+                    g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
         except Exception as e:
             logger.error('[PanelView] _applyAnonymousPlayer error: %s', e)
 
@@ -305,36 +487,27 @@ class PanelView(CallbackDelayer):
             if not listItem:
                 return
             accountDBID = vehicleData.get('accountDBID')
+            if stats and stats.get('anonymous'):
+                self._applyAnonymousPlayer(listItem, vehicleID, 'left' if arenaDP.isAllyTeam(vehicleData['team']) else 'right')
+                return
             if not accountDBID:
+                self._applyNoStatsAnonymousIcon(vehicleID, True)
                 return
 
-            isAlly = arenaDP.isAllyTeam(vehicleData['team'])
-            team = 'left' if isAlly else 'right'
-            wn8 = stats.get('wn8', 0)
-            wn8Color = stats.get('wn8_color', '#FFFFFF')
-            winrate = stats.get('winrate', 0)
-            winrateColor = stats.get('winrate_color', '#FFFFFF')
-            nick = vehicleData.get('name', '')
+            self._applyNoStatsAnonymousIcon(vehicleID, False)
 
-            if team == 'left':
-                fullText = "<font color='{}'>{}</font> <font color='#CCCCCC'>{}</font>".format(
-                    wn8Color, wn8, nick[:14])
-                cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
-            else:
-                fullText = "<font color='#CCCCCC'>{}</font> <font color='{}'>{}</font>".format(
-                    nick[:14], wn8Color, wn8)
-                cutText = "<font color='{}'>{}</font>".format(wn8Color, nick[:8])
-            if hasattr(listItem, 'playerNameFullTF') and listItem.playerNameFullTF:
-                listItem.playerNameFullTF.htmlText = fullText
-            if hasattr(listItem, 'playerNameCutTF') and listItem.playerNameCutTF:
-                listItem.playerNameCutTF.htmlText = cutText
-
-            if g_configParams.panelWinratePosition.value == WinratePosition.BEFORE_VEHICLE:
-                vehicleName = self._getVehicleName(vehicleData)
-                winrateText = "<font color='{}'>{}%</font> {}".format(
-                    winrateColor, winrate, vehicleName)
-                if hasattr(listItem, 'vehicleTF') and listItem.vehicleTF:
-                    listItem.vehicleTF.htmlText = winrateText
+            playerInfo = {
+                'wn8': stats.get('wn8', 0),
+                'wn8_color': stats.get('wn8_color', '#FFFFFF'),
+                'selected_rating': stats.get('selected_rating', stats.get('wn8', 0)),
+                'selected_rating_color': stats.get('selected_rating_color', stats.get('wn8_color', '#FFFFFF')),
+                'selected_rating_name': stats.get('selected_rating_name', 'WN8'),
+                'winrate': stats.get('winrate', 0),
+                'winrate_color': stats.get('winrate_color', '#FFFFFF'),
+                'nick': vehicleData.get('name', ''),
+                'vehicle': self._getVehicleName(vehicleData),
+            }
+            self._applyVehicleNameColor(vehicleID, listItem, playerInfo)
         except Exception as e:
             logger.error('[PanelView] _reapplyVehicleColors error for %s: %s', vehicleID, e)
 
@@ -371,10 +544,10 @@ class PanelView(CallbackDelayer):
 
         parts = []
         if g_configParams.showWn8.value:
-            wn8 = int(stats.get('wn8', 0) or 0)
-            if wn8:
+            rating = int(stats.get('selected_rating') or stats.get('wn8', 0) or 0)
+            if rating:
                 parts.append("<font color='{}'><b>{}</b></font>".format(
-                    stats.get('wn8_color', '#FFFFFF'), wn8))
+                    stats.get('selected_rating_color') or stats.get('wn8_color', '#FFFFFF'), rating))
         if g_configParams.showWinrate.value:
             winrate = float(stats.get('winrate', 0) or 0)
             if winrate > 0:
@@ -418,6 +591,9 @@ class PanelView(CallbackDelayer):
             if self._hasPanelCoreUI and g_events:
                 try:
                     g_events.updateMode -= self._onUpdateMode
+                    g_eventBus.removeListener(GameEvent.FULL_STATS, self._onFullStats, EVENT_BUS_SCOPE.BATTLE)
+                    if g_overlay:
+                        g_overlay.fini()
                 except Exception:
                     pass
                 try:

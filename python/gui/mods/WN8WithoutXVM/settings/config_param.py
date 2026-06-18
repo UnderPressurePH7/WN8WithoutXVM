@@ -1,7 +1,8 @@
 from .config_param_types import (
     CheckboxParameter,
     DropdownParameter,
-    OptionItem
+    OptionItem,
+    TextInputParameter
 )
 from .translations import Translator
 
@@ -10,6 +11,19 @@ class WinratePosition(object):
     NEAR_ICON = 'near_icon'
     BEFORE_VEHICLE = 'before_vehicle'
     NONE = 'none'
+
+
+class PanelMetric(object):
+    WINRATE = 'winrate'
+    WN8 = 'wn8'
+
+
+
+class RatingMode(object):
+    RECENT_WNX = 'recent_wnx'
+    RECENT_WN8 = 'recent_wn8'
+    OVERALL_WN8 = 'overall_wn8'
+    OVERALL_WNX = 'overall_wnx'
 
 
 class ApiRegion(object):
@@ -51,6 +65,26 @@ class ConfigParams(object):
             defaultValue=WinratePosition.NEAR_ICON
         )
 
+        self.panelMetric = DropdownParameter(
+            ['panel-metric'],
+            [
+                OptionItem(PanelMetric.WINRATE, 0, Translator.PANEL_METRIC_WINRATE),
+                OptionItem(PanelMetric.WN8, 1, Translator.PANEL_METRIC_WN8),
+            ],
+            defaultValue=PanelMetric.WINRATE
+        )
+
+        self.ratingMode = DropdownParameter(
+            ['rating-mode'],
+            [
+                OptionItem(RatingMode.RECENT_WNX, 0, Translator.RATING_RECENT_WNX),
+                OptionItem(RatingMode.RECENT_WN8, 1, Translator.RATING_RECENT_WN8),
+                OptionItem(RatingMode.OVERALL_WN8, 2, Translator.RATING_OVERALL_WN8),
+                OptionItem(RatingMode.OVERALL_WNX, 3, Translator.RATING_OVERALL_WNX),
+            ],
+            defaultValue=RatingMode.OVERALL_WN8
+        )
+
         self.wgApiRegion = DropdownParameter(
             ['wg-api-region'],
             [
@@ -59,6 +93,16 @@ class ConfigParams(object):
                 OptionItem(ApiRegion.ASIA, 2, Translator.REGION_ASIA),
             ],
             defaultValue=ApiRegion.EU
+        )
+
+        self.tomatoApiKey = TextInputParameter(
+            ['tomato-api-key'],
+            defaultValue=''
+        )
+
+        self.colorizeVehicleIcon = CheckboxParameter(
+            ['colorize-vehicle-icon'],
+            defaultValue=True
         )
 
     def items(self):

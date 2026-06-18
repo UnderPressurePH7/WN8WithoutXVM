@@ -1,5 +1,5 @@
 from .config_file import ConfigFile
-from .config_param import ConfigParams, g_configParams
+from .config_param import ConfigParams, g_configParams, RatingMode
 from .config_template import Template
 from .translations import Translator
 from ..utils import logger
@@ -58,9 +58,36 @@ class Config(object):
             )
 
             self.configTemplate.addParameterToColumn2(
+                "panelMetric",
+                header=Translator.PANEL_METRIC_HEADER,
+                body=Translator.PANEL_METRIC_BODY
+            )
+
+            self.configTemplate.addParameterToColumn2(
+                "ratingMode",
+                header=Translator.RATING_MODE_HEADER,
+                body=Translator.RATING_MODE_BODY
+            )
+
+            self.configTemplate.addParameterToColumn2(
                 "wgApiRegion",
                 header=Translator.WG_API_REGION_HEADER,
                 body=Translator.WG_API_REGION_BODY
+            )
+
+            self.configTemplate.addParameterToColumn2(
+                "tomatoApiKey",
+                header=Translator.TOMATO_API_KEY_HEADER,
+                body=Translator.TOMATO_API_KEY_BODY,
+                note=Translator.TOMATO_API_KEY_NOTE,
+                attention=Translator.TOMATO_API_KEY_ATTENTION
+            )
+
+            from .translations import getTranslation
+            self.configTemplate.addParameterToColumn2(
+                "colorizeVehicleIcon",
+                header=getTranslation("colorizeVehicleIcon.header"),
+                body=getTranslation("colorizeVehicleIcon.body")
             )
 
             template = self.configTemplate.generateTemplate()
@@ -79,6 +106,32 @@ class Config(object):
             logger.error("[Config] Error registering mod template: %s", str(e))
             logger.error("[Config] Traceback: %s", traceback.format_exc())
 
+    def _hasTomatoApiKey(self):
+        try:
+            key = getattr(self.configParams.tomatoApiKey, 'value', '')
+            return bool(str(key).strip())
+        except Exception:
+            return False
+
+    def _isTomatoRatingMode(self, mode):
+        return mode in (
+            RatingMode.RECENT_WNX,
+            RatingMode.RECENT_WN8,
+            RatingMode.OVERALL_WNX
+        )
+
+    def _enforceTomatoKeyRules(self):
+        # Do not allow Tomato-only rating modes without a Tomato API key.
+        try:
+            currentMode = getattr(self.configParams.ratingMode, 'value', RatingMode.OVERALL_WN8)
+            if self._isTomatoRatingMode(currentMode) and not self._hasTomatoApiKey():
+                self.configParams.ratingMode.value = RatingMode.OVERALL_WN8
+                logger.info("[Config] Tomato API key is empty. Rating mode was reset to Overall WN8.")
+                return True
+        except Exception as e:
+            logger.error("[Config] Error enforcing Tomato API key rules: %s", str(e))
+        return False
+
     def _applySettingsFromMsa(self, settings):
         try:
             configItems = self.configParams.items()
@@ -91,7 +144,10 @@ class Config(object):
                         logger.error("[Config] Error applying MSA setting %s = %s: %s",
                             paramName, value, str(e))
 
+            changed = self._enforceTomatoKeyRules()
             self.configFile.save_config()
+            if changed:
+                self.syncWithMsa()
 
         except Exception as e:
             logger.error("[Config] Error applying MSA settings: %s", str(e))
@@ -116,7 +172,10 @@ class Config(object):
                         logger.error("[Config] Error setting parameter %s to %s: %s",
                             tokenName, value, str(e))
 
+            changed = self._enforceTomatoKeyRules()
             self.configFile.save_config()
+            if changed:
+                self.syncWithMsa()
 
         except Exception as e:
             logger.error("[Config] Error updating settings from MSA: %s", str(e))
@@ -129,7 +188,9 @@ class Config(object):
             if success:
                 self._loadedSuccessfully = True
 
-            if not self.configFile.exists():
+            changed = self._enforceTomatoKeyRules()
+
+            if changed or not self.configFile.exists():
                 self.configFile.save_config()
 
         except Exception as e:

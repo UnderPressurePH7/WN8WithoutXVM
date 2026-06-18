@@ -18,5 +18,7 @@
     "wgApiRegion.body": "Server-Region für WG-Public-API-Anfragen",
     "region.eu": "Europa",
     "region.na": "Nordamerika",
-    "region.asia": "Asien"
+    "region.asia": "Asien",
+    "colorizeVehicleIcon.header": "Fahrzeugname einfärben",
+    "colorizeVehicleIcon.body": "Fahrzeugnamen in WN8-Farbe auf dem Spielerpanel und im Tab anzeigen"
 }
