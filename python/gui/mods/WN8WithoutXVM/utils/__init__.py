@@ -147,7 +147,7 @@ def _internal_fetch(url, headers, timeout, method, postData, callback):
 
 
 @wg_async
-def fetch_data_with_retry(url, retries=2, delay=5, headers=None, method='GET', postData='', timeout=30.0):
+def fetch_data_with_retry(url, retries=2, delay=5, headers=None, method='GET', postData='', timeout=30.0, as_json=True):
     if headers is None:
         headers = [
             ('Content-Type', 'application/json'),
@@ -194,6 +194,15 @@ def fetch_data_with_retry(url, retries=2, delay=5, headers=None, method='GET', p
                     continue
 
             try:
+                if not as_json:
+                    text = responseBody
+                    if isinstance(text, bytes):
+                        try:
+                            text = text.decode('utf-8', 'replace')
+                        except Exception:
+                            text = str(text)
+                    logger.debug('[Fetch] Returning raw text on attempt %s/%s', attempt, retries)
+                    raise AsyncReturn(text)
                 data = json.loads(responseBody)
                 logger.debug('[Fetch] Successfully fetched and parsed data on attempt %s/%s',
                              attempt, retries)

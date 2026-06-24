@@ -77,10 +77,8 @@ class ConfigParams(object):
         self.ratingMode = DropdownParameter(
             ['rating-mode'],
             [
-                OptionItem(RatingMode.RECENT_WNX, 0, Translator.RATING_RECENT_WNX),
+                OptionItem(RatingMode.OVERALL_WN8, 0, Translator.RATING_OVERALL_WN8),
                 OptionItem(RatingMode.RECENT_WN8, 1, Translator.RATING_RECENT_WN8),
-                OptionItem(RatingMode.OVERALL_WN8, 2, Translator.RATING_OVERALL_WN8),
-                OptionItem(RatingMode.OVERALL_WNX, 3, Translator.RATING_OVERALL_WNX),
             ],
             defaultValue=RatingMode.OVERALL_WN8
         )

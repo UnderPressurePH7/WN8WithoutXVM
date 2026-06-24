@@ -70,9 +70,17 @@ class StatsManager(object):
 
         if mode == RatingMode.RECENT_WNX:
             value = int(raw_stats.get('recent_wnx') or 0)
+            if value <= 0:
+                fb = int(raw_stats.get('overall_wnx') or raw_stats.get('wnx') or 0)
+                if fb > 0:
+                    return fb, get_wn8_color(fb), 'WNX', 'overall_wnx'
             return value, get_wn8_color(value), 'WNX', 'recent_wnx'
         if mode == RatingMode.RECENT_WN8:
             value = int(raw_stats.get('recent_wn8') or 0)
+            if value <= 0:
+                fb = int(raw_stats.get('overall_wn8') or raw_stats.get('wn8') or 0)
+                if fb > 0:
+                    return fb, get_wn8_color(fb), 'WN8', 'overall_wn8'
             return value, get_wn8_color(value), 'WN8', 'recent_wn8'
         if mode == RatingMode.OVERALL_WNX:
             value = int(raw_stats.get('overall_wnx') or raw_stats.get('wnx') or 0)
@@ -86,6 +94,16 @@ class StatsManager(object):
         winrate = round(float(raw_stats.get('winrate', 0)), 2)
         battles = int(raw_stats.get('battles', 0))
         selected_rating, selected_rating_color, selected_rating_name, selected_rating_key = self._select_rating(raw_stats)
+
+        # In recent modes, prefer the recent winrate from tomato when it's available.
+        try:
+            mode = getattr(g_configParams.ratingMode, 'value', RatingMode.OVERALL_WN8)
+        except Exception:
+            mode = RatingMode.OVERALL_WN8
+        if mode in (RatingMode.RECENT_WN8, RatingMode.RECENT_WNX):
+            recent_wr = raw_stats.get('recent_winrate')
+            if recent_wr is not None and float(recent_wr) > 0:
+                winrate = round(float(recent_wr), 2)
 
         return {
             'wn8': wn8,

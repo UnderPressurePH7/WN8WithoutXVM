@@ -39,7 +39,7 @@ TANKS_FIELDS = ','.join((
 ))
 
 _CACHE_LIFETIME = 3 * 24 * 60 * 60
-_CACHE_VERSION = 2
+_CACHE_VERSION = 3
 _QUEUE_INTERVAL = 0.25
 _COOLDOWN_AFTER_FAIL = 30.0
 
@@ -100,11 +100,26 @@ class StatsAPI(object):
         self._queued = set()
         self._worker_active = False
         self._last_req_time = {}
-        self._disk_cache = DiskCache('player_stats.dat',
+        self._disk_cache = DiskCache('player_stats_v3.dat',
                                      version=_CACHE_VERSION,
                                      lifetime=_CACHE_LIFETIME)
+        self._cleanup_old_cache(('player_stats.dat',))
         self._disk_cache.load()
         g_wn8_expected.load()
+
+    def _cleanup_old_cache(self, filenames):
+        # Silently remove obsolete cache files from previous versions so users
+        # don't have to delete anything by hand.
+        try:
+            import os
+            cache_dir = os.path.dirname(self._disk_cache._path)
+            for name in filenames:
+                old_path = os.path.join(cache_dir, name)
+                if os.path.isfile(old_path):
+                    os.remove(old_path)
+                    logger.debug('[StatsAPI] removed obsolete cache file: %s', name)
+        except Exception:
+            logger.exception('[StatsAPI] old cache cleanup failed')
 
     def _resolve_host(self):
         return REGION_HOSTS.get(self._get_region(), REGION_HOSTS['eu'])
@@ -142,26 +157,34 @@ class StatsAPI(object):
             return RatingMode.OVERALL_WN8
 
     def _requires_tomato(self):
+        # OVERALL_WNX still uses the keyed API; recent modes scrape HTML (no key needed).
         mode = self._get_rating_mode()
-        return mode in (RatingMode.RECENT_WNX, RatingMode.RECENT_WN8, RatingMode.OVERALL_WNX)
+        return mode == RatingMode.OVERALL_WNX
+
+    def _requires_recent_scrape(self):
+        mode = self._get_rating_mode()
+        return mode in (RatingMode.RECENT_WNX, RatingMode.RECENT_WN8)
 
     def _has_tomato_for_mode(self, stats):
-        if not self._requires_tomato():
-            return True
-        if not self._has_tomato_key():
-            return True
         if not isinstance(stats, dict):
-            return False
+            return not (self._requires_tomato() or self._requires_recent_scrape())
         mode = self._get_rating_mode()
-        if mode == RatingMode.RECENT_WNX:
-            return _as_int(stats.get('recent_wnx')) > 0
-        if mode == RatingMode.RECENT_WN8:
+        if mode in (RatingMode.RECENT_WNX, RatingMode.RECENT_WN8):
+            # already queried tomato (even if this profile has no recent data) -> don't refetch
+            if stats.get('tomato_fetched'):
+                return True
+            if mode == RatingMode.RECENT_WNX:
+                return _as_int(stats.get('recent_wnx')) > 0
             return _as_int(stats.get('recent_wn8')) > 0
         if mode == RatingMode.OVERALL_WNX:
+            if not self._has_tomato_key():
+                return True
             return _as_int(stats.get('overall_wnx') or stats.get('wnx')) > 0
         return True
 
     def _needs_tomato_refresh(self, stats):
+        if self._requires_recent_scrape():
+            return not self._has_tomato_for_mode(stats)
         return self._requires_tomato() and self._has_tomato_key() and not self._has_tomato_for_mode(stats)
 
     def _get_app_id(self):
@@ -223,22 +246,85 @@ class StatsAPI(object):
             })
         raise AsyncReturn(flat)
 
-    def _parse_tomato_recent(self, response):
+    def _extract_next_data(self, html):
+        # tomato.gg is a Next.js site; the data lives in a JSON <script id="__NEXT_DATA__">
+        if not html:
+            return None
+        try:
+            import re as _re
+            m = _re.search(
+                r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+                html, _re.S)
+            if not m:
+                return None
+            return json.loads(m.group(1))
+        except Exception:
+            logger.exception('[StatsAPI] failed to extract __NEXT_DATA__')
+            return None
+
+    def _get_page_props(self, next_data):
+        if not isinstance(next_data, dict):
+            return None
+        props = next_data.get('props')
+        if isinstance(props, dict):
+            page = props.get('pageProps')
+            if isinstance(page, dict):
+                return page
+        # some builds put pageProps at top level
+        page = next_data.get('pageProps')
+        return page if isinstance(page, dict) else None
+
+    def _select_recent_1000_overall(self, recent_data):
+        # recent_data == pageProps['recentStats']['data']
+        if not isinstance(recent_data, dict):
+            return None
+        battles = recent_data.get('battles')
+        if not isinstance(battles, dict):
+            return None
+        bucket = battles.get('1000')
+        if bucket is None:
+            bucket = battles.get(1000)
+        if not isinstance(bucket, dict):
+            return None
+        overall = bucket.get('overall')
+        if isinstance(overall, dict):
+            return overall
+        # fallback: bucket itself may already hold the rating
+        return bucket if _first_number(bucket, ('overallWN8', 'wn8', 'wnx', 'overallWNX')) is not None else None
+
+    def _parse_tomato_recent_nextdata(self, response):
+        # `response` may be either the parsed __NEXT_DATA__ JSON (from HTML)
+        # or already a pageProps dict. Handle both.
         result = {}
-        data = (response or {}).get('data') or {}
-        battles = data.get('battles') or {}
-        block = None
-        if isinstance(battles, dict):
-            block = battles.get('1000') or battles.get(1000)
-        if not isinstance(block, dict):
+        page_props = self._get_page_props(response)
+        if page_props is None and isinstance(response, dict):
+            page_props = response if 'recentStats' in response else None
+        if not isinstance(page_props, dict):
+            logger.debug('[StatsAPI] recent: no pageProps in response')
             return result
 
-        result['recent_wn8'] = _as_int(_first_number(block, ('wn8', 'WN8')))
-        result['recent_wnx'] = _as_int(_first_number(block, ('wnx', 'WNX')))
-        recent_wr = _first_number(block, ('winrate', 'wr', 'winsPercent'))
+        recent_stats = page_props.get('recentStats')
+        if not isinstance(recent_stats, dict):
+            logger.debug('[StatsAPI] recent: missing recentStats')
+            return result
+
+        meta = recent_stats.get('meta') or {}
+        if isinstance(meta, dict) and meta.get('status') == 'error':
+            logger.debug('[StatsAPI] recent: recentStats error %s', meta.get('message'))
+            return result
+
+        recent_data = recent_stats.get('data')
+        overall = self._select_recent_1000_overall(recent_data)
+        if not isinstance(overall, dict):
+            logger.debug('[StatsAPI] recent: no recent 1000 battles bucket')
+            return result
+
+        result['recent_wn8'] = _as_int(_first_number(overall, ('overallWN8', 'wn8', 'WN8')))
+        result['recent_wnx'] = _as_int(_first_number(overall, ('overallWNX', 'wnx', 'wnX', 'wn_x', 'WNX')))
+        recent_wr = _first_number(overall, ('overallWinrate', 'winrate', 'wr', 'winRate'))
         if recent_wr is not None:
             result['recent_winrate'] = _as_float(recent_wr)
-        recent_battles = _first_number(block, ('battles', 'battleCount'))
+        recent_battles = _first_number(overall, ('overallBattles', 'battles', 'battleCount'))
         if recent_battles is not None:
             result['recent_battles'] = _as_int(recent_battles)
         return result
@@ -271,15 +357,108 @@ class StatsAPI(object):
                 result['tomato_battles'] = _as_int(battles)
         return result
 
+    def _get_region_code(self):
+        # tomato.gg URLs use upper-case region codes
+        return {'eu': 'EU', 'na': 'NA', 'asia': 'ASIA'}.get(self._get_region(), 'EU')
+
+    @wg_async
+    def _resolve_nickname(self, accountId):
+        # tomato.gg stats URL needs the nickname: /stats/<REGION>/<nick>=<id>
+        url = self._build_url('/wot/account/info/', {
+            'account_id': accountId,
+            'fields': 'nickname',
+        })
+        try:
+            data = yield fetch_data_with_retry(url, retries=1, delay=1, timeout=8.0)
+            if data and data.get('status') == 'ok':
+                info = (data.get('data') or {}).get(str(accountId)) or {}
+                nick = info.get('nickname')
+                if nick:
+                    raise AsyncReturn(nick)
+        except AsyncReturn:
+            raise
+        except Exception:
+            logger.exception('[StatsAPI] nickname resolve failed for %s', accountId)
+        raise AsyncReturn(None)
+
+    def _browser_headers(self):
+        return [
+            ('User-Agent',
+             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+             '(KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36'),
+            ('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'),
+            ('Accept-Language', 'en-US,en;q=0.9'),
+        ]
+
+    def _parse_tomato_meta(self, html):
+        # Fast/robust path: recent stats are embedded in the og:image meta URL, e.g.
+        # .../api/og/player-stats?username=..&wn8=3861&recentWn8=3834&recentWinrate=61.6&..
+        result = {}
+        if not html:
+            return result
+        try:
+            import re as _re
+            # find the og:image (or twitter:image) url that points to player-stats
+            m = _re.search(r'player-stats\?([^"\'\s<>]+)', html)
+            if not m:
+                return result
+            query = m.group(1).replace('&amp;', '&')
+            params = {}
+            for pair in query.split('&'):
+                if '=' in pair:
+                    k, v = pair.split('=', 1)
+                    params[k.lower()] = v
+            recent_wn8 = params.get('recentwn8')
+            if recent_wn8 is not None:
+                result['recent_wn8'] = _as_int(recent_wn8)
+            recent_wr = params.get('recentwinrate')
+            if recent_wr is not None:
+                result['recent_winrate'] = _as_float(recent_wr)
+            # overall fields also available, useful as fallback
+            if params.get('wn8') is not None:
+                result['tomato_overall_wn8'] = _as_int(params.get('wn8'))
+            if params.get('winrate') is not None:
+                result['tomato_winrate'] = _as_float(params.get('winrate'))
+            if params.get('battles') is not None:
+                result['tomato_battles'] = _as_int(params.get('battles'))
+        except Exception:
+            logger.exception('[StatsAPI] meta parse failed')
+        return result
+
     @wg_async
     def _fetch_tomato_recent(self, accountId):
-        if not self._has_tomato_key():
+        nickname = yield self._resolve_nickname(accountId)
+        if not nickname:
             raise AsyncReturn({})
-        path = '/api/player/recents/{}/{}'.format(self._get_tomato_server(), accountId)
-        url = self._build_tomato_url(path, {'battles': '1000', 'cache': 'true'})
+
+        region = self._get_region_code()
         try:
-            data = yield fetch_data_with_retry(url, retries=1, delay=1, headers=self._tomato_headers(), timeout=8.0)
-            raise AsyncReturn(self._parse_tomato_recent(data))
+            from urllib.parse import quote
+        except ImportError:
+            from urllib import quote
+        # Current tomato.gg format: /stats/<nick>-<id>/<REGION>
+        slug = '{}-{}'.format(quote(str(nickname)), accountId)
+        url = 'https://tomato.gg/stats/{}/{}'.format(slug, region)
+        try:
+            html = yield fetch_data_with_retry(
+                url, retries=1, delay=1, headers=self._browser_headers(),
+                timeout=10.0, as_json=False)
+
+            # Primary: recent stats embedded in meta og:image url
+            parsed = self._parse_tomato_meta(html)
+            if _as_int(parsed.get('recent_wn8')) > 0:
+                raise AsyncReturn(parsed)
+
+            # Fallback: try __NEXT_DATA__ structure
+            next_data = self._extract_next_data(html)
+            if next_data is not None:
+                nd_parsed = self._parse_tomato_recent_nextdata(next_data)
+                if nd_parsed:
+                    parsed.update(nd_parsed)
+            if parsed:
+                raise AsyncReturn(parsed)
+
+            raise AsyncReturn({})
         except AsyncReturn:
             raise
         except Exception:
@@ -336,16 +515,18 @@ class StatsAPI(object):
                 'dmg_ratio': 0.0,
             }
 
-            if self._has_tomato_key() and self._requires_tomato():
-                mode = self._get_rating_mode()
-                if mode in (RatingMode.RECENT_WNX, RatingMode.RECENT_WN8):
-                    recent_stats = yield self._fetch_tomato_recent(accountId)
-                    if recent_stats:
-                        stats.update(recent_stats)
-                if mode == RatingMode.OVERALL_WNX:
-                    overall_stats = yield self._fetch_tomato_overall(accountId)
-                    if overall_stats:
-                        stats.update(overall_stats)
+            mode = self._get_rating_mode()
+            if mode in (RatingMode.RECENT_WNX, RatingMode.RECENT_WN8):
+                recent_stats = yield self._fetch_tomato_recent(accountId)
+                # mark that we already queried tomato for this player, so we don't
+                # re-fetch endlessly when a profile simply has no recent data
+                stats['tomato_fetched'] = True
+                if recent_stats:
+                    stats.update(recent_stats)
+            elif mode == RatingMode.OVERALL_WNX and self._has_tomato_key():
+                overall_stats = yield self._fetch_tomato_overall(accountId)
+                if overall_stats:
+                    stats.update(overall_stats)
 
             logger.debug('[StatsAPI] Computed stats for %s: %s', accountId, stats)
             raise AsyncReturn(stats)
