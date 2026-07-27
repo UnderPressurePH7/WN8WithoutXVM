@@ -11,12 +11,6 @@ from ..utils import logger, get_anonymize_icon_html, ANON_ICON_PANEL_SIZE
 from ..settings.config_param import g_configParams, WinratePosition, PanelMetric
 
 try:
-    from .panel_name_overlay import g_overlay
-except Exception as e:
-    logger.error('[PanelView] panel_name_overlay import failed: %s', e)
-    g_overlay = None
-
-try:
     from .player_panel import g_events, TYPE_PP
     HAS_PANEL_CORE_UI = g_events is not None
 except Exception as e:
@@ -77,8 +71,6 @@ class PanelView(CallbackDelayer):
                 g_events.updateMode += self._onUpdateMode
                 g_events.onUIReady += self._onUIReady
             g_eventBus.addListener(GameEvent.FULL_STATS, self._onFullStats, EVENT_BUS_SCOPE.BATTLE)
-            if g_overlay:
-                g_overlay.init()
             self._isInitialized = True
             if g_events and g_events.viewLoad:
                 self.delayCallback(0.3, self._initializeContainers)
@@ -129,6 +121,9 @@ class PanelView(CallbackDelayer):
                 stats = self._statsManager.get_cached_stats(accountDBID)
                 if stats:
                     self._reapplyVehicleColors(vehicleID, vehicleData, stats, arenaDP)
+            # Scaleform Full Stats (Comp7 and legacy modes) is created only
+            # after TAB is pressed. Re-send the rows on every FULL_STATS burst.
+            self._pushTabOverlays(arenaDP)
         except Exception as e:
             logger.error('[PanelView] _reapplyAllColors error: %s', e)
 
@@ -144,10 +139,6 @@ class PanelView(CallbackDelayer):
 
         try:
             self._createdContainers = []
-            g_events.createPP(self.CONTAINER_VEHICLE_NAME, self._buildVehicleNameConfig())
-            self._createdContainers.append(self.CONTAINER_VEHICLE_NAME)
-            logger.debug('[PanelView] Vehicle name overlay container created')
-
             g_events.createPP(self.CONTAINER_PP_ANON, self._buildPpAnonConfig())
             self._createdContainers.append(self.CONTAINER_PP_ANON)
             logger.debug('[PanelView] PP anonymous icon container created')
@@ -333,28 +324,8 @@ class PanelView(CallbackDelayer):
 
     def _applyVehicleNameColor(self, vehicleID, listItem, playerInfo):
         try:
-            vehicleName = playerInfo.get('vehicle') or ''
-            if not vehicleName:
-                return
-            if self.CONTAINER_VEHICLE_NAME not in self._createdContainers:
-                return
-            if not self._isVehicleNameVisible(listItem):
-                self._setVehicleNameOverlay(vehicleID, '')
-                return
-
             vehicleColor = playerInfo.get('selected_rating_color') or playerInfo.get('wn8_color') or '#FFFFFF'
-            if g_configParams.panelWinratePosition.value == WinratePosition.BEFORE_VEHICLE:
-                statText, statColor = self._getPanelMetricText(playerInfo)
-                if statText:
-                    text = "<font color='{}'>{}</font> <font color='{}'>{}</font>".format(
-                        statColor, statText, vehicleColor, vehicleName)
-                else:
-                    text = "<font color='{}'>{}</font>".format(vehicleColor, vehicleName)
-            else:
-                text = "<font color='{}'>{}</font>".format(vehicleColor, vehicleName)
-
-            self._clearOriginalVehicleName(listItem)
-            self._setVehicleNameOverlay(vehicleID, text)
+            g_events.setPanelTextColor(vehicleID, vehicleColor)
         except Exception as e:
             logger.error('[PanelView] _applyVehicleNameColor error for %s: %s', vehicleID, e)
 
@@ -428,18 +399,9 @@ class PanelView(CallbackDelayer):
                 })
                 g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
         elif winratePosition == WinratePosition.BEFORE_VEHICLE:
-            if not self._isVehicleNameVisible(listItem):
-                self._setVehicleNameOverlay(vehicleID, '')
-                return
-            vehicleName = playerInfo['vehicle']
-            if statText:
-                displayText = "<font color='{}'>{}</font> <font color='{}'>{}</font>".format(
-                    statColor, statText, playerInfo.get('selected_rating_color') or playerInfo['wn8_color'], vehicleName)
-            else:
-                displayText = "<font color='{}'>{}</font>".format(playerInfo.get('selected_rating_color') or playerInfo['wn8_color'], vehicleName)
-            if self.CONTAINER_VEHICLE_NAME in self._createdContainers:
-                self._clearOriginalVehicleName(listItem)
-                self._setVehicleNameOverlay(vehicleID, displayText)
+            # The stock vehicle field is colored in AS3. Adding text before it
+            # would require an overlay again and reintroduce mode-switch jumps.
+            pass
 
     def _applyAnonymousIcon(self, vehicleID, visible):
         try:
@@ -522,13 +484,118 @@ class PanelView(CallbackDelayer):
 
     def _pushTabOverlays(self, arenaDP):
         """
-        Tab-overlay данные идут через PatchBattlePlayer -> BattlePlayer model fields
-        (wn8, winrate, battles + цвета) -> TabView.js читает через data-bind-value.
-        Flash-канал (as_setTabOverlay) не работает для Gameface таб-меню в WoT 2.x.
+        Push rows to fixed-row Scaleform Full Stats (Comp7 and Stronghold).
+        Frontline is deliberately excluded: FrontlineFullStatsTable uses
+        recycled scrolling renderers and needs a dedicated adapter.
         """
-        pass
+        if not arenaDP or not g_events or not g_events.componentUI:
+            return
+        if self._isFrontlineBattle():
+            return
+        try:
+            allies = [
+                self._buildTabRow(vehicleID)
+                for vehicleID in self._getTabVehicleIDs(arenaDP, True)
+            ]
+            enemies = [
+                self._buildTabRow(vehicleID, True)
+                for vehicleID in self._getTabVehicleIDs(arenaDP, False)
+            ]
+            g_events.setTabOverlay(allies, enemies)
+            logger.debug(
+                '[PanelView] TAB overlays pushed: allies=%d enemies=%d',
+                len(allies), len(enemies),
+            )
+        except Exception as e:
+            logger.error('[PanelView] _pushTabOverlays error: %s', e)
 
-    def _buildTabRow(self, vehicleID):
+    def _isFrontlineBattle(self):
+        arena = self._getArena()
+        bonus_type = getattr(arena, 'bonusType', None) if arena else None
+        try:
+            from constants import ARENA_BONUS_TYPE
+            return bonus_type in tuple(
+                value for value in (
+                    getattr(ARENA_BONUS_TYPE, 'EPIC_RANDOM', None),
+                    getattr(ARENA_BONUS_TYPE, 'EPIC_RANDOM_2', None),
+                ) if value is not None
+            )
+        except Exception:
+            return False
+
+    def _getTabVehicleIDs(self, arenaDP, allies):
+        """Return vehicle IDs in the same order as the stock Full Stats table."""
+        collection_class = (
+            vos_collections.AllyItemsCollection
+            if allies else vos_collections.EnemyItemsCollection
+        )
+        sort_key = self._getTabSortKey()
+        try:
+            # WoT 2.x API: collection receives a key *class*, while arenaDP is
+            # passed to ids()/iterator(). Passing arenaDP to the constructor
+            # silently installs it as the sort key and breaks every Flash TAB.
+            collection = collection_class(sortKey=sort_key)
+            return list(collection.ids(arenaDP))
+        except Exception as e:
+            logger.debug('[PanelView] stock TAB collection failed: %s', e)
+            return self._getFallbackTabVehicleIDs(arenaDP, allies, sort_key)
+
+    def _getTabSortKey(self):
+        """Use the same sorting policy as each mode's statistics controller."""
+        arena = self._getArena()
+        bonus_type = getattr(arena, 'bonusType', None) if arena else None
+
+        try:
+            from constants import ARENA_BONUS_TYPE
+            comp7_types = tuple(
+                value for value in (
+                    getattr(ARENA_BONUS_TYPE, 'COMP7', None),
+                    getattr(ARENA_BONUS_TYPE, 'TOURNAMENT_COMP7', None),
+                    getattr(ARENA_BONUS_TYPE, 'TRAINING_COMP7', None),
+                    getattr(ARENA_BONUS_TYPE, 'COMP7_LIGHT', None),
+                ) if value is not None
+            )
+            if bonus_type in comp7_types:
+                from comp7.gui.battle_control.arena_info import vos_collections as comp7_collections
+                return comp7_collections.Comp7SortKey
+        except Exception as e:
+            logger.debug('[PanelView] Comp7 sort key unavailable: %s', e)
+
+        try:
+            from constants import ARENA_BONUS_TYPE
+            epic_types = tuple(
+                value for value in (
+                    getattr(ARENA_BONUS_TYPE, 'EPIC_RANDOM', None),
+                    getattr(ARENA_BONUS_TYPE, 'EPIC_RANDOM_2', None),
+                ) if value is not None
+            )
+            if bonus_type in epic_types:
+                return vos_collections.EpicRankSortKey
+        except Exception as e:
+            logger.debug('[PanelView] Frontline sort key unavailable: %s', e)
+
+        return vos_collections.VehicleInfoSortKey
+
+    def _getFallbackTabVehicleIDs(self, arenaDP, allies, sort_key):
+        """Compatibility fallback when WG changes collection construction."""
+        vehicles = []
+        for vehicle in arenaDP.getVehiclesInfoIterator():
+            try:
+                is_ally = arenaDP.isAllyTeam(vehicle.team)
+            except Exception:
+                arena = self._getArena()
+                data = arena.vehicles.get(vehicle.vehicleID, {}) if arena else {}
+                is_ally = arenaDP.isAllyTeam(data.get('team'))
+            if is_ally == allies:
+                vehicles.append(vehicle)
+
+        try:
+            vehicles.sort(key=sort_key)
+        except Exception:
+            vehicles.sort(key=lambda vehicle: getattr(vehicle, 'vehicleID', 0))
+        return [vehicle.vehicleID for vehicle in vehicles if vehicle.vehicleID]
+
+    def _buildTabRow(self, vehicleID, mirrored=False):
         if not vehicleID:
             return {'vehicleID': 0, 'text': ''}
         arena = self._getArena()
@@ -542,24 +609,47 @@ class PanelView(CallbackDelayer):
         if not stats:
             return {'vehicleID': vehicleID, 'text': ''}
 
+        def tab_cell(value, color, bold=False):
+            value = str(value)
+            if bold:
+                value = '<b>{}</b>'.format(value)
+            return "<font color='{}'>{}</font>".format(color, value)
+
+        def compact_battles(value):
+            value = int(value or 0)
+            if value >= 1000000:
+                return '{:.1f}m'.format(value / 1000000.0)
+            if value >= 1000:
+                return '{:.1f}k'.format(value / 1000.0)
+            return str(value)
+
         parts = []
         if g_configParams.showWn8.value:
             rating = int(stats.get('selected_rating') or stats.get('wn8', 0) or 0)
             if rating:
-                parts.append("<font color='{}'><b>{}</b></font>".format(
-                    stats.get('selected_rating_color') or stats.get('wn8_color', '#FFFFFF'), rating))
+                parts.append(tab_cell(
+                    rating,
+                    stats.get('selected_rating_color') or stats.get('wn8_color', '#FFFFFF'),
+                    bold=True))
         if g_configParams.showWinrate.value:
             winrate = float(stats.get('winrate', 0) or 0)
             if winrate > 0:
-                parts.append("<font color='{}'>{:.1f}%</font>".format(
-                    stats.get('winrate_color', '#FFFFFF'), winrate))
+                parts.append(tab_cell(
+                    '{:.1f}%'.format(winrate),
+                    stats.get('winrate_color', '#FFFFFF')))
         if g_configParams.showBattles.value:
             battles = int(stats.get('battles', 0) or 0)
             if battles:
-                parts.append("<font color='{}'>{}</font>".format(
-                    stats.get('battles_color', '#FFFFFF'), battles))
+                parts.append(tab_cell(
+                    compact_battles(battles),
+                    stats.get('battles_color', '#FFFFFF')))
 
-        return {'vehicleID': vehicleID, 'text': ' '.join(parts)}
+        # Read from the tank towards the outer edge:
+        # allies  (visual left -> right): battles, winrate, WN8
+        # enemies (visual left -> right): WN8, winrate, battles
+        if not mirrored:
+            parts.reverse()
+        return {'vehicleID': vehicleID, 'text': '\t'.join(parts)}
 
     def _updatePlayerDisplay(self, accountDBID, stats=None):
         if not stats:
@@ -592,8 +682,6 @@ class PanelView(CallbackDelayer):
                 try:
                     g_events.updateMode -= self._onUpdateMode
                     g_eventBus.removeListener(GameEvent.FULL_STATS, self._onFullStats, EVENT_BUS_SCOPE.BATTLE)
-                    if g_overlay:
-                        g_overlay.fini()
                 except Exception:
                     pass
                 try:

@@ -1,7 +1,7 @@
 from WN8WithoutXVM.utils import logger
 from WN8WithoutXVM import initialize, finalize
 
-__version__ = '0.1.0'
+__version__ = '1.0.0'
 __author__ = 'Under_Pressure'
 __copyright__ = 'Copyright 2026, Under_Pressure'
 __mod_name__ = 'WN8WithoutXVM'

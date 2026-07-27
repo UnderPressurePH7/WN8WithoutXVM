@@ -20,5 +20,7 @@
     "region.na": "North America",
     "region.asia": "Asia",
     "colorizeVehicleIcon.header": "Colorize Vehicle Name",
-    "colorizeVehicleIcon.body": "Display tank name in WN8 color in the player panel and Tab screen"
+    "colorizeVehicleIcon.body": "Display tank name in WN8 color in the player panel and Tab screen",
+    "colorizeNickname.header": "Colorize Nickname",
+    "colorizeNickname.body": "Display player nickname in WN8 color in the player panel"
 }

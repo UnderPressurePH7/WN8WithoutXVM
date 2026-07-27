@@ -20,5 +20,7 @@
     "region.na": "Nordamerika",
     "region.asia": "Asien",
     "colorizeVehicleIcon.header": "Fahrzeugname einfärben",
-    "colorizeVehicleIcon.body": "Fahrzeugnamen in WN8-Farbe auf dem Spielerpanel und im Tab anzeigen"
+    "colorizeVehicleIcon.body": "Fahrzeugnamen in WN8-Farbe auf dem Spielerpanel und im Tab anzeigen",
+    "colorizeNickname.header": "Spielernamen einfärben",
+    "colorizeNickname.body": "Spielernamen in WN8-Farbe auf dem Spielerpanel anzeigen"
 }

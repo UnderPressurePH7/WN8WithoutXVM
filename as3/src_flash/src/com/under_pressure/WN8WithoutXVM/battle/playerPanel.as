@@ -1,6 +1,7 @@
 package com.under_pressure.WN8WithoutXVM.battle
 {
    import flash.display.DisplayObject;
+   import flash.display.DisplayObjectContainer;
    import flash.events.Event;
    import flash.filters.DropShadowFilter;
    import flash.geom.ColorTransform;
@@ -10,34 +11,49 @@ package com.under_pressure.WN8WithoutXVM.battle
    import flash.text.TextFieldAutoSize;
    import flash.text.TextFormat;
    import flash.utils.Dictionary;
+
    import com.under_pressure.WN8WithoutXVM.injector.BattleDisplayable;
    import com.under_pressure.WN8WithoutXVM.utils.Utils;
+
    import net.wg.data.constants.generated.PLAYERS_PANEL_STATE;
    import net.wg.gui.battle.components.BattleAtlasSprite;
-   import net.wg.gui.battle.random.views.BattlePage;
    import net.wg.gui.battle.views.stats.fullStats.FullStatsTableBase;
+
    import scaleform.gfx.TextFieldEx;
 
+   /**
+    * WN8 overlay for the supported battle families.
+    *
+    * WG uses different battle-page classes per mode.  Classic/Stronghold and
+    * Comp7 expose `playersPanel`; Epic Random/Frontline exposes
+    * `epicRandomPlayersPanel`.  The component therefore resolves the panel by
+    * capability instead of casting the page to random.views.BattlePage.
+    */
    public class playerPanel extends BattleDisplayable
    {
-      private static const POOL_SIZE:int = 64;
-      private static const TYPE_PP:String = "pp";
-      private static const TAB_NUM_ROWS:int = 15;
-      private static const TAB_OVERLAY_OFFSET_X:Number = 4;
+      private static const POOL_SIZE:int = 96;
+      // Gap between the stock vehicle-name field and the statistics column.
+      private static const TAB_OVERLAY_OFFSET_X:Number = 80;
+      private static const TAB_COLUMN_WIDTH:Number = 56;
+      private static const TAB_COLUMN_GAP:Number = 2;
+      private static const TAB_COLUMN_COUNT:int = 3;
+      private static const TAB_OVERLAY_WIDTH:Number =
+         TAB_COLUMN_WIDTH * TAB_COLUMN_COUNT +
+         TAB_COLUMN_GAP * (TAB_COLUMN_COUNT - 1);
 
       private var _textFieldPool:Vector.<TextField>;
       private var _defaultTextFormat:TextFormat;
-
       private var _containers:Dictionary;
       private var _vehicleTextFields:Dictionary;
       private var _tabOverlayTextFields:Vector.<TextField>;
-
+      private var _tabOverlayHeaderFields:Vector.<TextField>;
       private var _cachedShadows:Dictionary;
+      private var _panelTextColors:Dictionary;
       private var _statsCacheMgr:StatisticDataCache;
-
       private var _eventListeners:Vector.<BattleAtlasSprite>;
-      private var _currentPanelState:int;
-      private var _isDisposed:Boolean;
+      private var _currentPanelState:int = -1;
+      private var _panelTextRefreshFrame:int = 0;
+      private var _isDisposed:Boolean = false;
 
       public var flashLogS:Function;
 
@@ -47,38 +63,43 @@ package com.under_pressure.WN8WithoutXVM.battle
          name = "playerPanel";
 
          this._textFieldPool = new Vector.<TextField>();
-         this._defaultTextFormat = new TextFormat("$UniversCondC", 14, 0xFFFFFF, false, false, false, "", "", "left", 0, 0, 0, 0);
-
+         this._defaultTextFormat = new TextFormat(
+            "$UniversCondC", 14, 0xFFFFFF, false, false, false,
+            "", "", "left", 0, 0, 0, 0
+         );
          this._containers = new Dictionary();
          this._vehicleTextFields = new Dictionary();
-         this._tabOverlayTextFields = new Vector.<TextField>(TAB_NUM_ROWS * 2, true);
+         // Dynamic sizing supports the different fixed-size FullStats tables.
+         // Frontline uses a separate scrolling-list implementation.
+         this._tabOverlayTextFields = new Vector.<TextField>();
+         this._tabOverlayHeaderFields = new Vector.<TextField>();
          this._cachedShadows = new Dictionary();
+         this._panelTextColors = new Dictionary();
          this._eventListeners = new Vector.<BattleAtlasSprite>();
-         this._currentPanelState = -1;
-         this._isDisposed = false;
+         this.addEventListener(Event.ENTER_FRAME, this.onPanelTextRefresh, false, 0, true);
 
          this._statsCacheMgr = StatisticDataCache.getInstance();
-         this._statsCacheMgr.addEventListener(StatisticDataEvent.CYCLIC_STATS_RECEIVED, this.onStatsReceived, false, 0, true);
+         this._statsCacheMgr.addEventListener(
+            StatisticDataEvent.CYCLIC_STATS_RECEIVED,
+            this.onStatsReceived,
+            false,
+            0,
+            true
+         );
 
-         this.initializeTextFieldPool();
-      }
-
-      private function initializeTextFieldPool():void
-      {
          for (var i:int = 0; i < POOL_SIZE; i++)
          {
-            this._textFieldPool.push(this.createPooledTextField());
+            this._textFieldPool.push(this.createTextField());
          }
       }
 
-      private function createPooledTextField():TextField
+      private function createTextField():TextField
       {
          var tf:TextField = new TextField();
          TextFieldEx.setNoTranslate(tf, true);
          tf.defaultTextFormat = this._defaultTextFormat;
          tf.mouseEnabled = false;
          tf.background = false;
-         tf.backgroundColor = 0;
          tf.embedFonts = true;
          tf.multiline = false;
          tf.selectable = false;
@@ -87,324 +108,131 @@ package com.under_pressure.WN8WithoutXVM.battle
          return tf;
       }
 
-      private function getTextFieldFromPool():TextField
+      private function acquireTextField():TextField
       {
-         if (this._textFieldPool.length > 0)
-         {
-            return this._textFieldPool.pop();
-         }
-         return this.createPooledTextField();
+         return this._textFieldPool.length > 0
+            ? this._textFieldPool.pop()
+            : this.createTextField();
       }
 
-      private function returnTextFieldToPool(tf:TextField):void
+      private function releaseTextField(tf:TextField):void
       {
-         if (!tf || this._isDisposed) return;
-
+         if (!tf) return;
          tf.text = "";
          tf.htmlText = "";
          tf.filters = null;
          tf.alpha = 1;
          tf.visible = true;
-
-         var ct:ColorTransform = new ColorTransform();
-         tf.transform.colorTransform = ct;
-
-         if (tf.parent)
-         {
-            tf.parent.removeChild(tf);
-         }
-
-         if (this._textFieldPool && this._textFieldPool.length < POOL_SIZE)
+         tf.transform.colorTransform = new ColorTransform();
+         if (tf.parent) tf.parent.removeChild(tf);
+         if (!this._isDisposed && this._textFieldPool.length < POOL_SIZE)
          {
             this._textFieldPool.push(tf);
          }
       }
 
-      private function getCachedShadow(shadowConfig:Object):DropShadowFilter
+      private function getMember(target:*, memberName:String):*
       {
-         if (!shadowConfig) return null;
-         var key:String = String(shadowConfig.distance) + "_" + String(shadowConfig.angle) + "_" +
-                          String(shadowConfig.color) + "_" + String(shadowConfig.alpha) + "_" +
-                          String(shadowConfig.size) + "_" + String(shadowConfig.strength);
-         if (!this._cachedShadows[key])
-         {
-            this._cachedShadows[key] = Utils.getDropShadowFilter(
-               shadowConfig.distance, shadowConfig.angle, shadowConfig.color,
-               shadowConfig.alpha, shadowConfig.size, shadowConfig.strength
-            );
-         }
-         return this._cachedShadows[key] as DropShadowFilter;
-      }
-
-      private function onStatsReceived(event:StatisticDataEvent):void
-      {
-         if (this._isDisposed) return;
-         var vehicleID:int = event.vehicleID;
-         var data:Object = this._statsCacheMgr.getStatsData(vehicleID);
-         if (!data) return;
-         for (var containerName:String in this._containers)
-         {
-            this.updateVehicleTextField(containerName, vehicleID, data);
-         }
-      }
-
-      private function updateVehicleTextField(containerName:String, vehicleID:int, data:Object):void
-      {
-         var container:Object = this._containers[containerName];
-         if (!container) return;
-
-         var textKey:String = container.textKey || containerName;
-         var isEnemy:Boolean = this.isPPEnemy(vehicleID);
-         var side:String = isEnemy ? "right" : "left";
-         var fullKey:String = textKey + "_" + side;
-
-         var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-         if (!vehicleFields)
-         {
-            vehicleFields = new Dictionary();
-            this._vehicleTextFields[containerName] = vehicleFields;
-         }
-
-         if (!vehicleFields[vehicleID])
-         {
-            this.createPPTextField(containerName, vehicleID, container);
-         }
-
-         var tf:TextField = vehicleFields[vehicleID] as TextField;
-         if (!tf) return;
-
-         var text:String = "";
-         if (data.hasOwnProperty(fullKey))
-         {
-            text = String(data[fullKey]);
-         }
-         else if (data.hasOwnProperty(textKey))
-         {
-            text = String(data[textKey]);
-         }
-
-         if (text.length > 0)
-         {
-            tf.htmlText = text;
-            tf.visible = true;
-         }
-      }
-
-      public function as_setStatsData(vehicleID:int, data:Object):void
-      {
-         if (!data || this._isDisposed) return;
+         if (!target) return null;
          try
          {
-            this._statsCacheMgr.addStatsData(vehicleID, data);
+            return target[memberName];
          }
-         catch (e:Error)
-         {
-            this.logError("as_setStatsData: " + e.message);
-         }
+         catch (e:Error) { }
+         return null;
       }
 
-      public function as_create(containerName:String, config:Object):void
+      /** Resolve Classic/Stronghold/Comp7 and Epic Random/Frontline panels. */
+      private function resolvePlayersPanel():*
       {
-         if (!containerName || containerName.length == 0 || !config || this._isDisposed) return;
-         try
-         {
-            this._containers[containerName] = config;
-            this._vehicleTextFields[containerName] = new Dictionary();
-         }
-         catch (e:Error)
-         {
-            this.logError("as_create: " + e.message);
-         }
+         var page:* = this.battlePage;
+         if (!page) return null;
+
+         var panel:* = this.getMember(page, "playersPanel");
+         if (panel) return panel;
+
+         panel = this.getMember(page, "epicRandomPlayersPanel");
+         if (panel) return panel;
+
+         return null;
       }
 
-      public function as_update(containerName:String, data:Object):void
-      {
-         if (!containerName || !data || this._isDisposed) return;
-         if (!data.hasOwnProperty("vehicleID")) return;
-         try
-         {
-            var vehicleID:int = int(data.vehicleID);
-            var container:Object = this._containers[containerName];
-            if (!container) return;
-
-            var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-            if (!vehicleFields)
-            {
-               vehicleFields = new Dictionary();
-               this._vehicleTextFields[containerName] = vehicleFields;
-            }
-
-            if (!vehicleFields[vehicleID])
-            {
-               this.createPPTextField(containerName, vehicleID, container);
-            }
-
-            var tf:TextField = vehicleFields[vehicleID] as TextField;
-            if (tf && data.hasOwnProperty("text"))
-            {
-               tf.htmlText = String(data.text);
-               tf.visible = true;
-            }
-         }
-         catch (e:Error)
-         {
-            this.logError("as_update: " + e.message);
-         }
-      }
-
-      public function as_delete(containerName:String):void
-      {
-         if (!containerName || this._isDisposed) return;
-         try
-         {
-            var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-            if (vehicleFields)
-            {
-               for (var vehicleId:* in vehicleFields)
-               {
-                  var tf:TextField = vehicleFields[vehicleId] as TextField;
-                  if (tf)
-                  {
-                     this.returnTextFieldToPool(tf);
-                  }
-               }
-            }
-            delete this._containers[containerName];
-            delete this._vehicleTextFields[containerName];
-         }
-         catch (e:Error)
-         {
-            this.logError("as_delete: " + e.message);
-         }
-      }
-
-      public function as_hasOwnProperty(containerName:String):Boolean
-      {
-         return containerName ? this._containers[containerName] != null : false;
-      }
-
-      public function as_updatePosition(containerName:String, vehicleID:int):void
-      {
-         if (!containerName || this._isDisposed) return;
-         var container:Object = this._containers[containerName];
-         if (!container) return;
-         try
-         {
-            var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-            if (!vehicleFields || !vehicleFields[vehicleID]) return;
-            var tf:TextField = vehicleFields[vehicleID] as TextField;
-            if (!tf) return;
-            this.updatePPTextFieldPosition(containerName, vehicleID, tf, container);
-         }
-         catch (e:Error)
-         {
-            this.logError("as_updatePosition: " + e.message);
-         }
-      }
-
-      public function as_updateAllPositions():void
-      {
-         if (this._isDisposed) return;
-         for (var containerName:String in this._containers)
-         {
-            var container:Object = this._containers[containerName];
-            var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-            if (vehicleFields)
-            {
-               for (var vehicleId:* in vehicleFields)
-               {
-                  var tf:TextField = vehicleFields[vehicleId] as TextField;
-                  if (tf)
-                  {
-                     this.updatePPTextFieldPosition(containerName, int(vehicleId), tf, container);
-                  }
-               }
-            }
-         }
-      }
-
-      public function as_setPanelState(state:int):void
-      {
-         if (this._currentPanelState == state || this._isDisposed) return;
-         this._currentPanelState = state;
-         this.as_updateAllPositions();
-      }
-
-      public function as_clearCache():void
-      {
-         if (this._statsCacheMgr)
-         {
-            this._statsCacheMgr.clear();
-         }
-      }
-
-      public function as_getPPListItem(vehicleID:int):*
-      {
-         return this.getPPListItem(vehicleID);
-      }
-
-      public function as_getVehicleTFPositions(vehicleIDs:Array):Array
-      {
-         var result:Array = [];
-         if (!vehicleIDs) return result;
-         try
-         {
-            for each (var vid:int in vehicleIDs)
-            {
-               var listItem:* = this.getPPListItem(vid);
-               if (!listItem) continue;
-               var tf:* = listItem.hasOwnProperty("vehicleTF") ? listItem.vehicleTF : null;
-               if (!tf) continue;
-               var pt:Point = tf.localToGlobal(new Point(0, 0));
-               var itemPt:Point = listItem.localToGlobal(new Point(0, 0));
-               var stageW:Number = stage ? stage.stageWidth : 1920;
-               var side:String = itemPt.x < (stageW * 0.5) ? "left" : "right";
-               result.push({vehicleID: vid, x: pt.x, y: pt.y,
-                             w: tf.width, h: tf.height, side: side,
-                             visible: tf.visible && listItem.visible});
-            }
-         }
-         catch (e:Error)
-         {
-            this.logError("as_getVehicleTFPositions: " + e.message);
-         }
-         return result;
-      }
-
-      public function as_getPlayersPanel():*
+      private function resolveFullStats():*
       {
          try
          {
-            var page:BattlePage = this.battlePage as BattlePage;
-            if (page && page.playersPanel)
-            {
-               return page.playersPanel;
-            }
+            var page:* = this.battlePage;
+            if (!page) return null;
+            if (page.hasOwnProperty("fullStats") && page["fullStats"])
+               return page["fullStats"];
+            if (page.hasOwnProperty("tabScreen") && page["tabScreen"])
+               return page["tabScreen"];
          }
          catch (e:Error)
          {
-            this.logError("as_getPlayersPanel: " + e.message);
+            this.logError("resolveFullStats: " + e.message);
          }
          return null;
       }
 
-      public function getPPListItem(vehicleID:int):*
+      private function getHolder(list:*, vehicleID:int):*
       {
+         if (!list) return null;
+
+         // Scaleform class methods are inherited and therefore are not
+         // reported by hasOwnProperty(). Call them directly with guarded
+         // fallbacks instead.
          try
          {
-            var page:BattlePage = this.battlePage as BattlePage;
-            if (!page || !page.playersPanel) return null;
-            var listRight:* = page.playersPanel.listRight;
+            return list.getHolderByVehicleID(vehicleID);
+         }
+         catch (e:Error) { }
+
+         try
+         {
+            return list.getHolderByVehicleId(vehicleID);
+         }
+         catch (e2:Error) { }
+
+         return null;
+      }
+
+      private function getListItemFromHolder(holder:*):*
+      {
+         if (!holder) return null;
+
+         try
+         {
+            return holder.getListItem();
+         }
+         catch (e:Error) { }
+
+         var item:* = this.getMember(holder, "_listItem");
+         if (item) return item;
+
+         return this.getMember(holder, "listItem");
+      }
+
+      public function getPPListItem(vehicleID:int):*
+      {
+         var panel:* = this.resolvePlayersPanel();
+         if (!panel) return null;
+
+         try
+         {
+            var holder:*;
+            var listRight:* = this.getMember(panel, "listRight");
             if (listRight)
             {
-               var holderRight:* = listRight.getHolderByVehicleID(vehicleID);
-               if (holderRight) return this.getListItemFromHolder(holderRight);
+               holder = this.getHolder(listRight, vehicleID);
+               if (holder) return this.getListItemFromHolder(holder);
             }
-            var listLeft:* = page.playersPanel.listLeft;
+
+            var listLeft:* = this.getMember(panel, "listLeft");
             if (listLeft)
             {
-               var holderLeft:* = listLeft.getHolderByVehicleID(vehicleID);
-               if (holderLeft) return this.getListItemFromHolder(holderLeft);
+               holder = this.getHolder(listLeft, vehicleID);
+               if (holder) return this.getListItemFromHolder(holder);
             }
          }
          catch (e:Error)
@@ -414,490 +242,607 @@ package com.under_pressure.WN8WithoutXVM.battle
          return null;
       }
 
-      private function getListItemFromHolder(holder:*):*
-      {
-         if (!holder) return null;
-         try
-         {
-            if (holder.hasOwnProperty("getListItem")) return holder.getListItem();
-            if (holder.hasOwnProperty("_listItem")) return holder["_listItem"];
-         }
-         catch (e:Error)
-         {
-            this.logError("getListItemFromHolder: " + e.message);
-         }
-         return null;
-      }
-
       private function isPPEnemy(vehicleID:int):Boolean
       {
-         try
-         {
-            var page:BattlePage = this.battlePage as BattlePage;
-            if (!page || !page.playersPanel) return false;
-            var listRight:* = page.playersPanel.listRight;
-            if (listRight)
-            {
-               var holder:* = listRight.getHolderByVehicleID(vehicleID);
-               return holder != null;
-            }
-         }
-         catch (e:Error) { }
-         return false;
+         var panel:* = this.resolvePlayersPanel();
+         if (!panel) return false;
+         var listRight:* = this.getMember(panel, "listRight");
+         return listRight && this.getHolder(listRight, vehicleID) != null;
       }
 
-      private function createPPTextField(containerName:String, vehicleID:int, container:Object):void
+      private function getShadow(config:Object):DropShadowFilter
       {
-         try
+         if (!config) return null;
+         var key:String = String(config.distance) + "_" + String(config.angle) + "_" +
+            String(config.color) + "_" + String(config.alpha) + "_" +
+            String(config.size) + "_" + String(config.strength);
+         if (!this._cachedShadows[key])
          {
-            var listItem:* = this.getPPListItem(vehicleID);
-            if (!listItem) return;
-
-            var isEnemy:Boolean = this.isPPEnemy(vehicleID);
-            var posConfig:Object = container[isEnemy ? "right" : "left"];
-            var shadowConfig:Object = container["shadow"];
-
-            var tf:TextField = this.getTextFieldFromPool();
-            var childName:String = container["child"];
-
-            if (childName && listItem.hasOwnProperty(childName))
-            {
-               var childElement:DisplayObject = listItem[childName] as DisplayObject;
-               if (childElement)
-               {
-                  var childIndex:int = listItem.getChildIndex(childElement);
-                  listItem.addChildAt(tf, childIndex + 1);
-               }
-               else
-               {
-                  listItem.addChild(tf);
-               }
-            }
-            else
-            {
-               listItem.addChild(tf);
-            }
-
-            tf.width = posConfig.width || 80;
-            tf.height = posConfig.height || 20;
-            this.applyAutoSize(tf, posConfig.align);
-
-            if (shadowConfig)
-            {
-               tf.filters = [this.getCachedShadow(shadowConfig)];
-            }
-
-            this.updatePPTextFieldPosition(containerName, vehicleID, tf, container);
-
-            var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-            if (!vehicleFields)
-            {
-               vehicleFields = new Dictionary();
-               this._vehicleTextFields[containerName] = vehicleFields;
-            }
-            vehicleFields[vehicleID] = tf;
+            this._cachedShadows[key] = Utils.getDropShadowFilter(
+               config.distance, config.angle, config.color,
+               config.alpha, config.size, config.strength
+            );
          }
-         catch (e:Error)
+         return this._cachedShadows[key] as DropShadowFilter;
+      }
+
+      private function getPositionConfig(container:Object, enemy:Boolean):Object
+      {
+         return container ? container[enemy ? "right" : "left"] : null;
+      }
+
+      private function createPPTextField(containerName:String, vehicleID:int, container:Object):TextField
+      {
+         var item:* = this.getPPListItem(vehicleID);
+         if (!item) return null;
+
+         var tf:TextField = this.acquireTextField();
+         var childName:String = container.hasOwnProperty("child") ? String(container.child) : "";
+         var child:DisplayObject = childName && item.hasOwnProperty(childName)
+            ? item[childName] as DisplayObject
+            : null;
+
+         if (child && item is DisplayObjectContainer)
          {
-            this.logError("createPPTextField: " + e.message);
+            DisplayObjectContainer(item).addChildAt(
+               tf,
+               DisplayObjectContainer(item).getChildIndex(child) + 1
+            );
+         }
+         else if (item is DisplayObjectContainer)
+         {
+            DisplayObjectContainer(item).addChild(tf);
+         }
+         else
+         {
+            this.releaseTextField(tf);
+            return null;
+         }
+
+         var enemy:Boolean = this.isPPEnemy(vehicleID);
+         var pos:Object = this.getPositionConfig(container, enemy);
+         tf.width = pos && pos.hasOwnProperty("width") ? Number(pos.width) : 80;
+         tf.height = pos && pos.hasOwnProperty("height") ? Number(pos.height) : 20;
+         var align:String = pos && pos.hasOwnProperty("align") ? String(pos.align) : "left";
+         tf.autoSize = align == "right"
+            ? TextFieldAutoSize.RIGHT
+            : (align == "center" ? TextFieldAutoSize.CENTER : TextFieldAutoSize.LEFT);
+
+         if (container.hasOwnProperty("shadow") && container.shadow)
+            tf.filters = [this.getShadow(container.shadow)];
+
+         var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
+         if (!fields)
+         {
+            fields = new Dictionary();
+            this._vehicleTextFields[containerName] = fields;
+         }
+         fields[vehicleID] = tf;
+         this.updatePPTextFieldPosition(containerName, vehicleID, tf, container);
+         return tf;
+      }
+
+      private function updatePPTextFieldPosition(
+         containerName:String,
+         vehicleID:int,
+         tf:TextField,
+         container:Object
+      ):void
+      {
+         var item:* = this.getPPListItem(vehicleID);
+         if (!item || !tf || !container) return;
+
+         var enemy:Boolean = this.isPPEnemy(vehicleID);
+         var pos:Object = this.getPositionConfig(container, enemy);
+         if (!pos) return;
+
+         var baseX:Number = 0;
+         var baseY:Number = 0;
+         var holderName:String = container.hasOwnProperty("holder") ? String(container.holder) : "";
+         if (holderName && item.hasOwnProperty(holderName))
+         {
+            var anchor:DisplayObject = item[holderName] as DisplayObject;
+            if (anchor)
+            {
+               baseX = anchor.x;
+               baseY = anchor.y;
+            }
+         }
+
+         var offsetX:Number = pos.hasOwnProperty("x") ? Number(pos.x) : 0;
+         var offsetY:Number = pos.hasOwnProperty("y") ? Number(pos.y) : 0;
+         var state:int = item.hasOwnProperty("state") ? int(item.state) : this._currentPanelState;
+
+         if (pos.hasOwnProperty("stateOffsets") && pos.stateOffsets && state >= 0)
+         {
+            var stateKey:String = "state" + String(state);
+            if (pos.stateOffsets.hasOwnProperty(stateKey))
+            {
+               var stateOffset:Object = pos.stateOffsets[stateKey];
+               if (stateOffset.hasOwnProperty("x")) offsetX = Number(stateOffset.x);
+               if (stateOffset.hasOwnProperty("y")) offsetY = Number(stateOffset.y);
+            }
+         }
+
+         tf.x = baseX + offsetX;
+         tf.y = baseY + offsetY;
+         tf.visible = state != PLAYERS_PANEL_STATE.HIDDEN;
+
+         if (tf.visible && pos.hasOwnProperty("hideInStates") && pos.hideInStates)
+         {
+            for each (var hiddenState:int in pos.hideInStates as Array)
+            {
+               if (hiddenState == state)
+               {
+                  tf.visible = false;
+                  break;
+               }
+            }
          }
       }
 
-      private function applyAutoSize(tf:TextField, align:String):void
+      private function onStatsReceived(event:StatisticDataEvent):void
       {
-         if (align == "right") tf.autoSize = TextFieldAutoSize.RIGHT;
-         else if (align == "center") tf.autoSize = TextFieldAutoSize.CENTER;
-         else tf.autoSize = TextFieldAutoSize.LEFT;
+         if (this._isDisposed) return;
+         var data:Object = this._statsCacheMgr.getStatsData(event.vehicleID);
+         if (!data) return;
+         for (var containerName:String in this._containers)
+            this.updateVehicleData(containerName, event.vehicleID, data);
       }
 
-      private function updatePPTextFieldPosition(containerName:String, vehicleID:int, tf:TextField, container:Object):void
+      private function updateVehicleData(containerName:String, vehicleID:int, data:Object):void
       {
-         try
+         var container:Object = this._containers[containerName];
+         if (!container) return;
+
+         var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
+         var tf:TextField = fields ? fields[vehicleID] as TextField : null;
+         if (!tf) tf = this.createPPTextField(containerName, vehicleID, container);
+         if (!tf) return;
+
+         var textKey:String = container.hasOwnProperty("textKey") && container.textKey
+            ? String(container.textKey)
+            : containerName;
+         var sideKey:String = textKey + (this.isPPEnemy(vehicleID) ? "_right" : "_left");
+         if (data.hasOwnProperty(sideKey)) tf.htmlText = String(data[sideKey]);
+         else if (data.hasOwnProperty(textKey)) tf.htmlText = String(data[textKey]);
+         tf.visible = tf.htmlText.length > 0;
+      }
+
+      public function as_setStatsData(vehicleID:int, data:Object):void
+      {
+         if (!data || this._isDisposed) return;
+         this._statsCacheMgr.addStatsData(vehicleID, data);
+         for (var name:String in this._containers)
+            this.updateVehicleData(name, vehicleID, data);
+      }
+
+      public function as_create(containerName:String, config:Object):void
+      {
+         if (!containerName || !config || this._isDisposed) return;
+         this._containers[containerName] = config;
+         this._vehicleTextFields[containerName] = new Dictionary();
+      }
+
+      public function as_update(containerName:String, data:Object):void
+      {
+         if (!containerName || !data || !data.hasOwnProperty("vehicleID")) return;
+         var vehicleID:int = int(data.vehicleID);
+         var container:Object = this._containers[containerName];
+         if (!container) return;
+         var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
+         var tf:TextField = fields ? fields[vehicleID] as TextField : null;
+         if (!tf) tf = this.createPPTextField(containerName, vehicleID, container);
+         if (tf && data.hasOwnProperty("text"))
          {
-            var listItem:* = this.getPPListItem(vehicleID);
-            if (!listItem) return;
-            var isEnemy:Boolean = this.isPPEnemy(vehicleID);
-            var posConfig:Object = container[isEnemy ? "right" : "left"];
-            var holderName:String = container["holder"];
-
-            var baseX:Number = 0;
-            var baseY:Number = 0;
-            if (holderName && listItem.hasOwnProperty(holderName))
-            {
-               var holder:DisplayObject = listItem[holderName] as DisplayObject;
-               if (holder)
-               {
-                  baseX = holder.x;
-                  baseY = holder.y;
-               }
-            }
-
-            var offsetX:Number = posConfig.x || 0;
-            var offsetY:Number = posConfig.y || 0;
-
-            var state:int = -1;
-            if (listItem.hasOwnProperty("state"))
-            {
-               state = int(listItem.state);
-            }
-
-            if (posConfig.hasOwnProperty("stateOffsets") && state >= 0)
-            {
-               var stateKey:String = "state" + String(state);
-               var stateOffsets:Object = posConfig.stateOffsets;
-               if (stateOffsets && stateOffsets.hasOwnProperty(stateKey))
-               {
-                  var stateOffset:Object = stateOffsets[stateKey];
-                  if (stateOffset.hasOwnProperty("x")) offsetX = stateOffset.x;
-                  if (stateOffset.hasOwnProperty("y")) offsetY = stateOffset.y;
-               }
-            }
-
-            tf.x = baseX + offsetX;
-            tf.y = baseY + offsetY;
-
-            var shouldHide:Boolean = false;
-            if (state == PLAYERS_PANEL_STATE.HIDDEN)
-            {
-               shouldHide = true;
-            }
-            else if (posConfig.hasOwnProperty("hideInStates"))
-            {
-               var hideStates:Array = posConfig.hideInStates as Array;
-               if (hideStates)
-               {
-                  for each (var hideState:int in hideStates)
-                  {
-                     if (hideState == state)
-                     {
-                        shouldHide = true;
-                        break;
-                     }
-                  }
-               }
-            }
-
-            if (shouldHide) tf.visible = false;
+            tf.htmlText = String(data.text);
+            tf.visible = tf.htmlText.length > 0;
          }
-         catch (e:Error)
+      }
+
+      public function as_delete(containerName:String):void
+      {
+         var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
+         if (fields)
          {
-            this.logError("updatePPTextFieldPosition: " + e.message);
+            for each (var tf:TextField in fields) this.releaseTextField(tf);
          }
+         delete this._vehicleTextFields[containerName];
+         delete this._containers[containerName];
+      }
+
+      public function as_hasOwnProperty(containerName:String):Boolean
+      {
+         return containerName && this._containers[containerName] != null;
+      }
+
+      public function as_updatePosition(containerName:String, vehicleID:int):void
+      {
+         var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
+         var tf:TextField = fields ? fields[vehicleID] as TextField : null;
+         if (tf) this.updatePPTextFieldPosition(
+            containerName,
+            vehicleID,
+            tf,
+            this._containers[containerName]
+         );
+      }
+
+      public function as_updateAllPositions():void
+      {
+         for (var name:String in this._vehicleTextFields)
+         {
+            var fields:Dictionary = this._vehicleTextFields[name] as Dictionary;
+            for (var vehicleID:* in fields)
+               this.updatePPTextFieldPosition(name, int(vehicleID), fields[vehicleID], this._containers[name]);
+         }
+      }
+
+      public function as_setPanelState(state:int):void
+      {
+         this._currentPanelState = state;
+         this.as_updateAllPositions();
+      }
+
+      public function as_clearCache():void
+      {
+         if (this._statsCacheMgr) this._statsCacheMgr.clear();
+      }
+
+      public function as_getPPListItem(vehicleID:int):*
+      {
+         return this.getPPListItem(vehicleID);
+      }
+
+      public function as_getPlayersPanel():*
+      {
+         return this.resolvePlayersPanel();
+      }
+
+      public function as_getVehicleTFPositions(vehicleIDs:Array):Array
+      {
+         var result:Array = [];
+         if (!vehicleIDs) return result;
+
+         for each (var vehicleID:int in vehicleIDs)
+         {
+            var item:* = this.getPPListItem(vehicleID);
+            if (!item || !item.hasOwnProperty("vehicleTF") || !item.vehicleTF) continue;
+            var vehicleTF:* = item.vehicleTF;
+            var point:Point = vehicleTF.localToGlobal(new Point(0, 0));
+            var itemPoint:Point = item.localToGlobal(new Point(0, 0));
+            var stageWidth:Number = stage ? stage.stageWidth : 1920;
+            result.push({
+               vehicleID: vehicleID,
+               x: point.x,
+               y: point.y,
+               w: vehicleTF.width,
+               h: vehicleTF.height,
+               side: itemPoint.x < stageWidth * 0.5 ? "left" : "right",
+               visible: vehicleTF.visible && item.visible
+            });
+         }
+         return result;
+      }
+
+      public function as_vehicleIconColor(vehicleID:int, colorStr:String):void
+      {
+         var item:* = this.getPPListItem(vehicleID);
+         if (!item || !item.hasOwnProperty("vehicleIcon")) return;
+         var icon:BattleAtlasSprite = item.vehicleIcon as BattleAtlasSprite;
+         if (!icon) return;
+
+         icon["playerPanel"] = {color: Utils.colorConvert(colorStr)};
+         if (!icon.hasEventListener(Event.RENDER))
+         {
+            icon.addEventListener(Event.RENDER, this.onRenderHandle, false, 0, true);
+            this._eventListeners.push(icon);
+         }
+         this.applyIconColor(icon);
+      }
+
+      public function as_vehicleNameColor(vehicleID:int, colorStr:String, vehicleName:String):void
+      {
+         this.as_setPanelTextColor(vehicleID, colorStr);
       }
 
       /**
-       *  Tab-menu overlay: Python passes two arrays of { vehicleID, text } in
-       *  the exact row order used by WG in FullStatsTable.playerNameCollection.
-       *  We anchor our own TextField next to each playerName_cXrY — WG's
-       *  original TextField is untouched.
+       * Keep the stock fields and own only their color. WoT remains
+       * responsible for the text, visibility, width and position.
        */
+      public function as_setPanelTextColor(vehicleID:int, colorStr:String):void
+      {
+         if (!vehicleID || this._isDisposed) return;
+         if (colorStr)
+            this._panelTextColors[vehicleID] = colorStr;
+         else
+            delete this._panelTextColors[vehicleID];
+         this.applyPanelTextColor(vehicleID);
+      }
+
+      private function onPanelTextRefresh(event:Event):void
+      {
+         if (this._isDisposed || !this._panelTextColors) return;
+         if (++this._panelTextRefreshFrame < 3) return;
+         this._panelTextRefreshFrame = 0;
+
+         for (var vehicleID:* in this._panelTextColors)
+            this.applyPanelTextColor(int(vehicleID));
+      }
+
+      private function applyPanelTextColor(vehicleID:int):void
+      {
+         var colorStr:String = this._panelTextColors[vehicleID] as String;
+         if (!colorStr) return;
+
+         var item:* = this.getPPListItem(vehicleID);
+         if (!item) return;
+
+         // Panel modes may alternate between the full and cut nickname fields.
+         this.colorStockTextField(this.getMember(item, "playerNameFullTF") as TextField, colorStr);
+         this.colorStockTextField(this.getMember(item, "playerNameCutTF") as TextField, colorStr);
+         this.colorStockTextField(this.getMember(item, "playerNameTF") as TextField, colorStr);
+         this.colorStockTextField(this.getMember(item, "vehicleTF") as TextField, colorStr);
+      }
+
+      private function colorStockTextField(tf:TextField, colorStr:String):void
+      {
+         if (!tf) return;
+         var color:uint = Utils.colorConvert(colorStr);
+         if (tf.textColor != color)
+            tf.textColor = color;
+      }
+
+      private function onRenderHandle(event:Event):void
+      {
+         this.applyIconColor(event.currentTarget as BattleAtlasSprite);
+      }
+
+      private function applyIconColor(icon:BattleAtlasSprite):void
+      {
+         if (!icon || !icon["playerPanel"]) return;
+         var transform:ColorTransform = icon.transform.colorTransform;
+         transform.color = uint(icon["playerPanel"].color);
+         icon.transform.colorTransform = transform;
+      }
+
+      public function as_shadowListItem(shadow:Object):DropShadowFilter
+      {
+         return shadow ? this.getShadow(shadow) : null;
+      }
+
+      public function extendedSetting(containerName:String, vehicleID:int):TextField
+      {
+         var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
+         var tf:TextField = fields ? fields[vehicleID] as TextField : null;
+         if (!tf && this._containers[containerName])
+            tf = this.createPPTextField(containerName, vehicleID, this._containers[containerName]);
+         return tf;
+      }
+
       public function as_setTabOverlay(allies:Array, enemies:Array):void
       {
-         if (this._isDisposed) return;
-         try
-         {
-            var table:FullStatsTableBase = this.getFullStatsTable();
-            if (table == null || table.playerNameCollection == null) return;
-
-            this.applyTabOverlayRow(table, allies, false);
-            this.applyTabOverlayRow(table, enemies, true);
-         }
-         catch (e:Error)
-         {
-            this.logError("as_setTabOverlay: " + e.message);
-         }
+         var table:FullStatsTableBase = this.getFullStatsTable();
+         if (!table || !table.playerNameCollection) return;
+         this.applyTabOverlay(table, allies, false);
+         this.applyTabOverlay(table, enemies, true);
       }
 
       public function as_clearTabOverlay():void
       {
-         if (this._isDisposed || this._tabOverlayTextFields == null) return;
          for (var i:int = 0; i < this._tabOverlayTextFields.length; i++)
          {
-            var tf:TextField = this._tabOverlayTextFields[i];
-            if (tf != null)
+            if (this._tabOverlayTextFields[i])
             {
-               this.returnTextFieldToPool(tf);
+               this.releaseTextField(this._tabOverlayTextFields[i]);
                this._tabOverlayTextFields[i] = null;
+            }
+         }
+         for (i = 0; i < this._tabOverlayHeaderFields.length; i++)
+         {
+            if (this._tabOverlayHeaderFields[i])
+            {
+               this.releaseTextField(this._tabOverlayHeaderFields[i]);
+               this._tabOverlayHeaderFields[i] = null;
             }
          }
       }
 
       private function getFullStatsTable():FullStatsTableBase
       {
+         var fullStats:* = this.resolveFullStats();
+         if (!fullStats) return null;
          try
          {
-            var page:BattlePage = this.battlePage as BattlePage;
-            if (page == null) return null;
-            var fullStats:* = page.fullStats;
-            if (fullStats == null) return null;
+            // Classic and Stronghold expose the table as statsTable. Keep
+            // "table" for older clients and mode-specific implementations.
+            if (fullStats.hasOwnProperty("statsTable"))
+               return fullStats["statsTable"] as FullStatsTableBase;
             if (fullStats.hasOwnProperty("table"))
-            {
                return fullStats["table"] as FullStatsTableBase;
+            if (fullStats.hasOwnProperty("getTabContentView"))
+            {
+               var content:* = fullStats.getTabContentView();
+               if (content && content.hasOwnProperty("statsTable"))
+                  return content["statsTable"] as FullStatsTableBase;
+               if (content && content.hasOwnProperty("table"))
+                  return content["table"] as FullStatsTableBase;
             }
          }
-         catch (e:Error)
-         {
-            this.logError("getFullStatsTable: " + e.message);
-         }
+         catch (e:Error) { }
          return null;
       }
 
-      private function applyTabOverlayRow(table:FullStatsTableBase, rows:Array, isEnemy:Boolean):void
+      private function applyTabOverlay(table:FullStatsTableBase, rows:Array, enemy:Boolean):void
       {
-         if (rows == null) return;
-         var nameCollection:Vector.<TextField> = table.playerNameCollection;
-         if (nameCollection == null) return;
-
-         var baseIdx:int = isEnemy ? TAB_NUM_ROWS : 0;
-         var count:int = rows.length > TAB_NUM_ROWS ? TAB_NUM_ROWS : rows.length;
+         if (!rows) return;
+         var names:Vector.<TextField> = table.playerNameCollection;
+         var sideSize:int = int(names.length / 2);
+         var count:int = Math.min(rows.length, sideSize);
+         var base:int = enemy ? sideSize : 0;
+         var fixedXAnchor:TextField =
+            base < names.length ? names[base] : null;
+         if (!fixedXAnchor) return;
+         this.placeTabHeaders(fixedXAnchor, names[base], enemy);
 
          for (var row:int = 0; row < count; row++)
          {
-            var collIdx:int = baseIdx + row;
-            if (collIdx >= nameCollection.length) break;
-            var anchor:TextField = nameCollection[collIdx];
-            if (anchor == null) continue;
-
-            var rowData:Object = rows[row];
-            if (rowData == null) continue;
-
-            var text:String = rowData.hasOwnProperty("text") ? String(rowData.text) : "";
-            this.placeTabOverlay(collIdx, anchor, text, isEnemy);
-         }
-
-         for (var blankRow:int = count; blankRow < TAB_NUM_ROWS; blankRow++)
-         {
-            var slot:int = baseIdx + blankRow;
-            var old:TextField = this._tabOverlayTextFields[slot];
-            if (old != null)
-            {
-               old.htmlText = "";
-               old.visible = false;
-            }
+            var index:int = base + row;
+            if (index >= names.length || !names[index]) break;
+            var data:Object = rows[row];
+            var text:String = data && data.hasOwnProperty("text") ? String(data.text) : "";
+            this.placeTabOverlay(index, fixedXAnchor, names[index], text, enemy);
          }
       }
 
-      private function placeTabOverlay(slot:int, anchor:TextField, text:String, isEnemy:Boolean):void
+      private function placeTabHeaders(
+         fixedXAnchor:TextField,
+         rowAnchor:TextField,
+         enemy:Boolean
+      ):void
       {
-         var tf:TextField = this._tabOverlayTextFields[slot];
-         if (tf == null)
+         var labels:Array = enemy
+            ? ["WN8", "WIN%", "BATTLES"]
+            : ["BATTLES", "WIN%", "WN8"];
+         var baseX:Number = enemy
+            ? fixedXAnchor.x + fixedXAnchor.width + TAB_OVERLAY_OFFSET_X
+            : fixedXAnchor.x - TAB_OVERLAY_WIDTH - TAB_OVERLAY_OFFSET_X;
+         var sideOffset:int = enemy ? TAB_COLUMN_COUNT : 0;
+
+         for (var column:int = 0; column < TAB_COLUMN_COUNT; column++)
          {
-            tf = this.getTextFieldFromPool();
-            tf.autoSize = isEnemy ? TextFieldAutoSize.LEFT : TextFieldAutoSize.RIGHT;
-            tf.width = 120;
+            var slot:int = sideOffset + column;
+            while (this._tabOverlayHeaderFields.length <= slot)
+            {
+               this._tabOverlayHeaderFields.push(null);
+            }
+
+            var tf:TextField = this._tabOverlayHeaderFields[slot];
+            if (!tf)
+            {
+               tf = this.acquireTextField();
+               tf.autoSize = TextFieldAutoSize.NONE;
+               if (rowAnchor.parent) rowAnchor.parent.addChild(tf);
+               this._tabOverlayHeaderFields[slot] = tf;
+            }
+
+            tf.width = TAB_COLUMN_WIDTH;
+            tf.height = 18;
+            var format:TextFormat = tf.defaultTextFormat;
+            format.align = "center";
+            format.size = 11;
+            format.bold = true;
+            format.color = 0xC2C2B0;
+            tf.defaultTextFormat = format;
+            tf.text = String(labels[column]);
+            tf.visible = true;
+            tf.x = baseX + column * (TAB_COLUMN_WIDTH + TAB_COLUMN_GAP);
+            tf.y = rowAnchor.y - 21;
+         }
+      }
+
+      private function placeTabOverlay(
+         index:int,
+         fixedXAnchor:TextField,
+         rowAnchor:TextField,
+         text:String,
+         enemy:Boolean
+      ):void
+      {
+         var cells:Array = text.split("\t");
+         while (cells.length < TAB_COLUMN_COUNT)
+         {
+            cells.push("");
+         }
+
+         var baseX:Number = enemy
+            ? fixedXAnchor.x + fixedXAnchor.width + TAB_OVERLAY_OFFSET_X
+            : fixedXAnchor.x - TAB_OVERLAY_WIDTH - TAB_OVERLAY_OFFSET_X;
+
+         for (var column:int = 0; column < TAB_COLUMN_COUNT; column++)
+         {
+            var slot:int = index * TAB_COLUMN_COUNT + column;
+            // A dynamic Vector throws RangeError #1125 for an unset index.
+            while (this._tabOverlayTextFields.length <= slot)
+            {
+               this._tabOverlayTextFields.push(null);
+            }
+
+            var tf:TextField = this._tabOverlayTextFields[slot];
+            if (!tf)
+            {
+               tf = this.acquireTextField();
+               tf.autoSize = TextFieldAutoSize.NONE;
+               if (rowAnchor.parent) rowAnchor.parent.addChild(tf);
+               this._tabOverlayTextFields[slot] = tf;
+            }
+
+            tf.width = TAB_COLUMN_WIDTH;
             tf.height = 20;
-            tf.mouseEnabled = false;
-            tf.selectable = false;
-            var parent:flash.display.DisplayObjectContainer = anchor.parent;
-            if (parent != null) parent.addChild(tf);
-            this._tabOverlayTextFields[slot] = tf;
-         }
+            var format:TextFormat = tf.defaultTextFormat;
+            format.align = "center";
+            format.tabStops = null;
+            format.size = 14;
+            format.bold = false;
+            format.color = 0xFFFFFF;
+            tf.defaultTextFormat = format;
 
-         if (text == null || text.length == 0)
-         {
-            tf.htmlText = "";
-            tf.visible = false;
-            return;
+            var cellText:String = String(cells[column]);
+            tf.htmlText = cellText;
+            tf.visible = cellText.length > 0;
+            tf.x = baseX + column * (TAB_COLUMN_WIDTH + TAB_COLUMN_GAP);
+            tf.y = rowAnchor.y;
          }
-
-         tf.htmlText = text;
-         tf.visible = true;
-
-         if (isEnemy)
-         {
-            tf.x = anchor.x + anchor.textWidth + TAB_OVERLAY_OFFSET_X;
-         }
-         else
-         {
-            tf.x = anchor.x - tf.textWidth - TAB_OVERLAY_OFFSET_X;
-         }
-         tf.y = anchor.y;
-      }
-
-      public function as_vehicleNameColor(vehicleID:int, colorStr:String, vehicleName:String):void
-      {
-         if (this._isDisposed) return;
-         try
-         {
-            var listItem:* = this.getPPListItem(vehicleID);
-            if (!listItem) return;
-            if (!listItem.hasOwnProperty("vehicleTF")) return;
-            var tf:TextField = listItem.vehicleTF as TextField;
-            if (!tf) return;
-            if (colorStr && colorStr.length > 0 && vehicleName && vehicleName.length > 0)
-               tf.htmlText = "<font color='" + colorStr + "'>" + vehicleName + "</font>";
-            else
-               tf.htmlText = vehicleName;
-         }
-         catch (e:Error)
-         {
-            this.logError("as_vehicleNameColor: " + e.message);
-         }
-      }
-
-      public function as_vehicleIconColor(vehicleID:int, colorStr:String):void
-      {
-         if (this._isDisposed) return;
-         try
-         {
-            var listItem:* = this.getPPListItem(vehicleID);
-            if (!listItem) return;
-            if (!listItem.hasOwnProperty("vehicleIcon")) return;
-            var vehicleIcon:BattleAtlasSprite = listItem.vehicleIcon as BattleAtlasSprite;
-            if (!vehicleIcon) return;
-
-            vehicleIcon["playerPanel"] = {"color": Utils.colorConvert(colorStr)};
-
-            if (!vehicleIcon.hasEventListener(Event.RENDER))
-            {
-               vehicleIcon.addEventListener(Event.RENDER, this.onRenderHandle, false, 0, true);
-               this._eventListeners.push(vehicleIcon);
-            }
-         }
-         catch (e:Error)
-         {
-            this.logError("as_vehicleIconColor: " + e.message);
-         }
-      }
-
-      private function onRenderHandle(event:Event):void
-      {
-         var sprite:BattleAtlasSprite = event.target as BattleAtlasSprite;
-         if (!sprite) return;
-         var data:Object = sprite["playerPanel"];
-         if (!data) return;
-         var cTransform:ColorTransform = sprite.transform.colorTransform;
-         cTransform.color = uint(data["color"]);
-         sprite.transform.colorTransform = cTransform;
-      }
-
-      public function as_shadowListItem(shadow:Object):DropShadowFilter
-      {
-         if (!shadow) return null;
-         return Utils.getDropShadowFilter(
-            shadow.distance, shadow.angle, shadow.color,
-            shadow.alpha, shadow.size, shadow.strength
-         );
-      }
-
-      public function extendedSetting(containerName:String, vehicleID:int):TextField
-      {
-         try
-         {
-            var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-            if (!vehicleFields) return null;
-            if (!vehicleFields[vehicleID])
-            {
-               var container:Object = this._containers[containerName];
-               if (!container) return null;
-               this.createPPTextField(containerName, vehicleID, container);
-            }
-            return vehicleFields[vehicleID] as TextField;
-         }
-         catch (e:Error)
-         {
-            this.logError("extendedSetting: " + e.message);
-         }
-         return null;
       }
 
       override protected function onDispose():void
       {
          this._isDisposed = true;
-         try
+         this.removeEventListener(Event.ENTER_FRAME, this.onPanelTextRefresh);
+
+         if (this._statsCacheMgr)
          {
-            if (this._statsCacheMgr)
-            {
-               this._statsCacheMgr.removeEventListener(StatisticDataEvent.CYCLIC_STATS_RECEIVED, this.onStatsReceived);
-               this._statsCacheMgr = null;
-            }
-            this.cleanupEventListeners();
-            this.cleanupTextFields();
-            this.cleanupTabOverlay();
-            this.cleanupPool();
-
-            this._containers = null;
-            this._vehicleTextFields = null;
-            this._cachedShadows = null;
-            this._defaultTextFormat = null;
-
-            super.onDispose();
+            this._statsCacheMgr.removeEventListener(
+               StatisticDataEvent.CYCLIC_STATS_RECEIVED,
+               this.onStatsReceived
+            );
+            this._statsCacheMgr = null;
          }
-         catch (e:Error)
-         {
-            this.logError("onDispose: " + e.message);
-         }
-      }
 
-      private function cleanupTabOverlay():void
-      {
-         if (this._tabOverlayTextFields == null) return;
-         for (var i:int = 0; i < this._tabOverlayTextFields.length; i++)
+         this.as_clearTabOverlay();
+         for (var name:String in this._vehicleTextFields)
          {
-            var tf:TextField = this._tabOverlayTextFields[i];
-            if (tf != null && tf.parent != null)
+            var fields:Dictionary = this._vehicleTextFields[name] as Dictionary;
+            for each (var tf:TextField in fields)
             {
-               tf.parent.removeChild(tf);
+               if (tf && tf.parent) tf.parent.removeChild(tf);
             }
          }
-         this._tabOverlayTextFields = null;
-      }
 
-      private function cleanupEventListeners():void
-      {
-         if (!this._eventListeners) return;
-         var len:int = this._eventListeners.length;
-         for (var i:int = 0; i < len; i++)
+         for each (var icon:BattleAtlasSprite in this._eventListeners)
          {
-            var sprite:BattleAtlasSprite = this._eventListeners[i];
-            if (sprite && sprite.hasEventListener(Event.RENDER))
-            {
-               sprite.removeEventListener(Event.RENDER, this.onRenderHandle);
-            }
+            if (icon && icon.hasEventListener(Event.RENDER))
+               icon.removeEventListener(Event.RENDER, this.onRenderHandle);
          }
-         this._eventListeners.length = 0;
+
+         this._containers = null;
+         this._vehicleTextFields = null;
+         this._cachedShadows = null;
+         this._panelTextColors = null;
          this._eventListeners = null;
-      }
-
-      private function cleanupTextFields():void
-      {
-         if (!this._vehicleTextFields) return;
-         for (var containerName:String in this._vehicleTextFields)
-         {
-            var vehicleFields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
-            if (vehicleFields)
-            {
-               for (var vehicleId:* in vehicleFields)
-               {
-                  var tf:TextField = vehicleFields[vehicleId] as TextField;
-                  if (tf) this.returnTextFieldToPool(tf);
-               }
-            }
-         }
-      }
-
-      private function cleanupPool():void
-      {
-         if (!this._textFieldPool) return;
-         var len:int = this._textFieldPool.length;
-         for (var i:int = 0; i < len; i++)
-         {
-            var tf:TextField = this._textFieldPool[i];
-            if (tf)
-            {
-               tf.filters = null;
-               if (tf.parent) tf.parent.removeChild(tf);
-            }
-         }
-         this._textFieldPool.length = 0;
+         this._tabOverlayTextFields = null;
+         this._tabOverlayHeaderFields = null;
          this._textFieldPool = null;
+         this._defaultTextFormat = null;
+
+         super.onDispose();
       }
 
       private function logError(message:String):void
       {
-         var fullMessage:String = "[playerPanel] " + message;
-         if (this.flashLogS != null) this.flashLogS(fullMessage);
-         trace(fullMessage);
+         var full:String = "[playerPanel] " + message;
+         if (this.flashLogS != null) this.flashLogS(full);
+         trace(full);
       }
    }
 }

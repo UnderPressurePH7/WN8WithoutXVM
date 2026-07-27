@@ -2714,3 +2714,57 @@
 .Player_right_da422 .Player_base_fe348 .Player_vehicleNameWrapper_f1c80 {
     margin: 0 0 0 8rem;
 }
+
+/* BattleStats TAB stats v8: nick -> vehicle -> stats -> icon.
+   The enemy row is already mirrored by Player_right, so the same DOM order
+   produces icon -> stats -> vehicle -> nick on the right. */
+.UserInfo_user_info_ee23d {
+    width: 156rem;
+}
+
+.UserInfo_nickname_wrapper_af103 {
+    width: 127rem;
+}
+
+.BattleStatsTabStats,
+.BattleStatsTabStats_right {
+    order: 0 !important;
+    flex-direction: row;
+    margin: -1rem 4rem 0 4rem;
+}
+
+/* BattleStats TAB stats v9: fixed row geometry.
+   Keep the same occupied width for normal and anonymized players. */
+.BattleStatsTabStats,
+.BattleStatsTabStats_right {
+    width: 87rem;
+    margin: -1rem 4rem 0 4rem;
+    justify-content: center;
+}
+
+.BattleStatsTabStats_tier {
+    display: none;
+}
+
+.BattleStatsTabStats_wn8.BattleStatsTabStats_anonymize,
+.BattleStatsTabStats_anonymizeIcon {
+    width: 26rem;
+    min-width: 26rem;
+    flex-basis: 26rem;
+}
+
+/* Put the prestige swords outside the vehicle silhouette, in the gap
+   between the vehicle-class icon and the contour. */
+.Player_base_fe348 .Player_vehicleContour_ed4d4 .Player_prestigeGrade_b1d4f {
+    right: 108rem;
+    left: auto;
+    z-index: 2;
+    transform: translateY(-50%);
+}
+
+.Player_right_da422 .Player_base_fe348 .Player_vehicleContour_ed4d4 .Player_prestigeGrade_b1d4f {
+    right: auto;
+    left: 108rem;
+    z-index: 2;
+    transform: scaleX(-1) translateY(-50%);
+}

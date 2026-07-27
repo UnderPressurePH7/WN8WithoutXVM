@@ -1,46 +1,51 @@
 from constants import ARENA_GUI_TYPE, ARENA_BONUS_TYPE
 
 
-def _safe_get(cls, name):
-    val = getattr(cls, name, None)
-    if val is None:
-        return object()  # уникальный объект который никогда не совпадёт
-    return val
+def _enum_values(enum_cls, names):
+    """Return existing enum values without dropping a legitimate numeric zero."""
+    values = []
+    for name in names:
+        value = getattr(enum_cls, name, None)
+        if value is not None:
+            values.append(value)
+    return frozenset(values)
 
 
-ALLOWED_GUI_TYPES = frozenset(filter(None, (
-    getattr(ARENA_GUI_TYPE, 'RANDOM', None),
-    getattr(ARENA_GUI_TYPE, 'STRONGHOLD_BATTLES', None),
-    getattr(ARENA_GUI_TYPE, 'SORTIE', None),
-    getattr(ARENA_GUI_TYPE, 'FORT_BATTLE', None),
-    getattr(ARENA_GUI_TYPE, 'BATTLE_ROYALE', None),
-    getattr(ARENA_GUI_TYPE, 'MAPBOX', None),
-    # новые режимы в WoT 2.x
-    getattr(ARENA_GUI_TYPE, 'RANDOM_TRAINING', None),
-    getattr(ARENA_GUI_TYPE, 'TRAINING', None),
-    getattr(ARENA_GUI_TYPE, 'RANKED', None),
-    getattr(ARENA_GUI_TYPE, 'EPIC_BATTLE', None),
-)))
+# Supported UI families:
+# - Classic: random and clan/stronghold battles
+# - Comp7: Onslaught and its tournament/training/light variants
+# - Epic Random: Frontline
+ALLOWED_GUI_TYPES = _enum_values(ARENA_GUI_TYPE, (
+    'RANDOM',
+    'STRONGHOLD_BATTLES',
+    'SORTIE',
+    'FORT_BATTLE',
+    'EPIC_BATTLE',
+))
 
-ALLOWED_BONUS_TYPES = frozenset(filter(None, (
-    getattr(ARENA_BONUS_TYPE, 'REGULAR', None),
-    getattr(ARENA_BONUS_TYPE, 'RANDOM_NP2', None),
-    getattr(ARENA_BONUS_TYPE, 'SORTIE_2', None),
-    getattr(ARENA_BONUS_TYPE, 'FORT_BATTLE_2', None),
-    getattr(ARENA_BONUS_TYPE, 'COMP7', None),
-    getattr(ARENA_BONUS_TYPE, 'TOURNAMENT_COMP7', None),
-    getattr(ARENA_BONUS_TYPE, 'TRAINING_COMP7', None),
-    getattr(ARENA_BONUS_TYPE, 'COMP7_LIGHT', None),
-)))
+ALLOWED_BONUS_TYPES = _enum_values(ARENA_BONUS_TYPE, (
+    'REGULAR',
+    'RANDOM_NP2',
+    'SORTIE_2',
+    'FORT_BATTLE_2',
+    'COMP7',
+    'TOURNAMENT_COMP7',
+    'TRAINING_COMP7',
+    'COMP7_LIGHT',
+    'EPIC_RANDOM',
+    'EPIC_RANDOM_2',
+))
 
 
 def is_supported(arena):
     if arena is None:
         return False
-    guiType = getattr(arena, 'guiType', None)
-    bonusType = getattr(arena, 'bonusType', None)
-    if guiType is not None and guiType in ALLOWED_GUI_TYPES:
+
+    gui_type = getattr(arena, 'guiType', None)
+    bonus_type = getattr(arena, 'bonusType', None)
+
+    if gui_type is not None and gui_type in ALLOWED_GUI_TYPES:
         return True
-    if bonusType is not None and bonusType in ALLOWED_BONUS_TYPES:
+    if bonus_type is not None and bonus_type in ALLOWED_BONUS_TYPES:
         return True
     return False

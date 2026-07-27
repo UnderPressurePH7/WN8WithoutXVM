@@ -47,14 +47,6 @@ class PlayerPanelMeta(BaseDAAPIComponent):
     def as_setStatsDataS(self, vehicleID, data):
         if self._isDAAPIInited():
             try:
-                from gui.mods.WN8WithoutXVM.settings.config import g_configParams
-                if g_configParams.colorizeVehicleIcon.value and vehicleID in self._vehicleNameColorCache:
-                    cached = self._vehicleNameColorCache.get(vehicleID)
-                    if cached and isinstance(data, dict) and 'vehicleName' in data:
-                        color, name = cached
-                        if color:
-                            data = dict(data)
-                            data['vehicleName'] = u"<font color='{}'>{}</font>".format(color, name)
                 return self.flashObject.as_setStatsData(vehicleID, data)
             except Exception as e:
                 logger.error('[PlayerPanel] as_setStatsDataS error: %s', e)
@@ -170,6 +162,14 @@ class PlayerPanelMeta(BaseDAAPIComponent):
                 return self.flashObject.as_vehicleIconColor(vehicleID, color)
             except Exception as e:
                 logger.error('[PlayerPanel] as_vehicleIconColorS error: %s', e)
+        return None
+
+    def as_setPanelTextColorS(self, vehicleID, color):
+        if self._isDAAPIInited():
+            try:
+                return self.flashObject.as_setPanelTextColor(vehicleID, color)
+            except Exception as e:
+                logger.error('[PlayerPanel] as_setPanelTextColorS error: %s', e)
         return None
 
     def as_setTabOverlayS(self, allies, enemies):
@@ -561,8 +561,18 @@ class Events(object):
         return None
 
     def vehicleNameColor(self, vehicleID, color, vehicleName):
-        """Kept for compatibility — actual coloring done by PanelNameOverlay."""
-        pass
+        """Compatibility wrapper for the stock-field AS3 color controller."""
+        return self.setPanelTextColor(vehicleID, color)
+
+    def setPanelTextColor(self, vehicleID, color):
+        if not vehicleID or not color:
+            return None
+        if self.componentUI:
+            try:
+                return self.componentUI.as_setPanelTextColorS(vehicleID, color)
+            except Exception as e:
+                logger.error('[PlayerPanel] setPanelTextColor error: %s', e)
+        return None
 
     def extendedSetting(self, container, vehicleID):
         if self.componentUI:

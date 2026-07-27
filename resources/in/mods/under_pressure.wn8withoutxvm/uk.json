@@ -34,5 +34,7 @@
     "tomatoApiKey.header": "Tomato.gg API key",
     "tomatoApiKey.body": "Щоб увімкнути статистику за 1000 боїв: встав Tomato.gg API key і вибери режим WNX за 1000 боїв або WN8 за 1000 боїв.",
     "tomatoApiKey.note": "Без ключа стандартно працює тільки Загальний WN8. Режими з позначкою Tomato key без ключа будуть скидатися на Загальний WN8.",
-    "tomatoApiKey.attention": "Не показуй і не передавай свій Tomato API key іншим."
+    "tomatoApiKey.attention": "Не показуй і не передавай свій Tomato API key іншим.",
+    "colorizeNickname.header": "Замальовувати нік",
+    "colorizeNickname.body": "Відображати нік гравця кольором WN8 на панелі"
 }

@@ -20,5 +20,7 @@
     "region.na": "Северная Америка",
     "region.asia": "Азия",
     "colorizeVehicleIcon.header": "Закрашивать название техники",
-    "colorizeVehicleIcon.body": "Отображать название танка цветом WN8 на панели и во вкладке Tab"
+    "colorizeVehicleIcon.body": "Отображать название танка цветом WN8 на панели и во вкладке Tab",
+    "colorizeNickname.header": "Закрашивать ник",
+    "colorizeNickname.body": "Отображать ник игрока цветом WN8 на панели"
 }
