@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="WN8Settings.css" />
+</head>
+<body>
+<div id="inq-wn8-settings-root" class="inq-root">
+  <div class="inq-shell">
+    <header class="inq-topbar">
+      <div class="inq-brand">
+        <div class="inq-logo-slot"></div>
+        <div class="inq-brand-copy">
+          <div class="inq-title">WN8 WITHOUT XVM</div>
+          <div class="inq-subtitle" data-i18n="menu.subtitle">Mod settings</div>
+          <div class="inq-authors">AUTHORS: UnderPressure &amp; INQ</div>
+        </div>
+      </div>
+      <button class="inq-close" data-action="close" data-i18n-aria="menu.close" aria-label="Close"></button>
+    </header>
+
+    <div class="inq-content-viewport">
+      <main class="inq-content" id="inq-scroll-content">
+        <div class="inq-column inq-column-left">
+          <section class="inq-section">
+            <div class="inq-section-title" data-i18n="section.tab">TAB</div>
+            <div class="inq-row"><span data-i18n="showWn8.header">Show WN8 in TAB</span><div class="inq-toggle" data-setting="showWn8" data-control="toggle"><i></i></div></div>
+            <div class="inq-row"><span data-i18n="showWinrate.header">Show win rate in TAB</span><div class="inq-toggle" data-setting="showWinrate" data-control="toggle"><i></i></div></div>
+            <div class="inq-row"><span data-i18n="showBattles.header">Show battles in TAB</span><div class="inq-toggle" data-setting="showBattles" data-control="toggle"><i></i></div></div>
+          </section>
+
+          <section class="inq-section">
+            <div class="inq-section-title" data-i18n="section.battleResults">Battle Results</div>
+            <div class="inq-row"><span data-i18n="battleResultsDeanonimize.header">De-anonymize players in Battle Results</span><div class="inq-toggle" data-setting="battleResultsDeanonimize" data-control="toggle"><i></i></div></div>
+          </section>
+
+          <section class="inq-section">
+            <div class="inq-section-title" data-i18n="section.playerPanel">Player panels</div>
+            <div class="inq-row"><span data-i18n="colorizePanelText.header">Color nicknames and vehicle names</span><div class="inq-toggle" data-setting="colorizePanelText" data-control="toggle"><i></i></div></div>
+            <div class="inq-row"><span data-i18n="panelTextColorMetric.header">Color by</span><div class="inq-select" data-setting="panelTextColorMetric" data-control="select"><div class="inq-select-value"></div><b>▾</b><div class="inq-select-menu"></div></div></div>
+          </section>
+        </div>
+
+        <div class="inq-column">
+          <section class="inq-section inq-panel-section">
+            <div class="inq-section-title" data-i18n="section.playerPanelSettings">Player-panel settings</div>
+            <div class="inq-row"><span data-i18n="panelDisplayMode.header">Player-panel display mode</span><div class="inq-select" data-setting="panelDisplayMode" data-control="select"><div class="inq-select-value"></div><b>▾</b><div class="inq-select-menu"></div></div></div>
+            <div class="inq-row"><span data-i18n="panelWinratePosition.header">Player-panel statistic position</span><div class="inq-select" data-setting="panelWinratePosition" data-control="select"><div class="inq-select-value"></div><b>▾</b><div class="inq-select-menu"></div></div></div>
+            <div class="inq-row"><span data-i18n="panelMetric.header">Statistic in player panels</span><div class="inq-select" data-setting="panelMetric" data-control="select"><div class="inq-select-value"></div><b>▾</b><div class="inq-select-menu"></div></div></div>
+            <div class="inq-row inq-slider-row"><span data-i18n="panelWinrateFontSize.header">Statistic font size</span><div class="inq-slider" data-setting="panelWinrateFontSize" data-control="slider"><div class="inq-slider-track"><div class="inq-slider-fill"></div><div class="inq-slider-knob"></div></div><div class="inq-slider-value" data-value-for="panelWinrateFontSize">0</div></div></div>
+            <div class="inq-row inq-slider-row inq-offset-row" data-dependent="panelHorizontalOffset">
+              <div class="inq-offset-label">
+                <div class="inq-help" data-i18n-aria="help.showExample" aria-label="Show example"><span class="inq-help-mark">?</span>
+                  <div class="inq-help-popup">
+                    <div class="inq-help-text" data-i18n="panelHorizontalOffset.body">Adjust the horizontal position of the statistic near the vehicle icon</div>
+                    <img src="coui://gui/maps/icons/wn8withoutxvm/helper.png" />
+                  </div>
+                </div>
+                <span data-i18n="panelHorizontalOffset.header">Horizontal statistic offset</span>
+              </div>
+              <div class="inq-slider" data-setting="panelHorizontalOffset" data-control="slider"><div class="inq-slider-track"><div class="inq-slider-fill"></div><div class="inq-slider-knob"></div></div><div class="inq-slider-value" data-value-for="panelHorizontalOffset">0</div></div>
+            </div>
+            <div class="inq-row"><span data-i18n="panelValueFormat.header">Win-rate format</span><div class="inq-select" data-setting="panelValueFormat" data-control="select"><div class="inq-select-value"></div><b>▾</b><div class="inq-select-menu"></div></div></div>
+          </section>
+
+          <section class="inq-section">
+            <div class="inq-section-title" data-i18n="section.ratingApi">Rating and API</div>
+            <div class="inq-row"><span data-i18n="ratingMode.header">Rating mode</span><div class="inq-select" data-setting="ratingMode" data-control="select"><div class="inq-select-value"></div><b>▾</b><div class="inq-select-menu"></div></div></div>
+            <div class="inq-row"><span data-i18n="wgApiRegion.header">WG API region</span><div class="inq-select" data-setting="wgApiRegion" data-control="select"><div class="inq-select-value"></div><b>▾</b><div class="inq-select-menu"></div></div></div>
+          </section>
+        </div>
+      </main>
+      <div class="inq-scrollbar" id="inq-scrollbar"><div class="inq-scroll-thumb" id="inq-scroll-thumb"></div></div>
+    </div>
+  </div>
+</div>
+<script type="module" src="WN8Settings.js"></script>
+</body>
+</html>

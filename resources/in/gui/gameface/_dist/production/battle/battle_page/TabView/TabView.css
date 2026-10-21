@@ -1,4 +1,4 @@
-﻿.HorizontalBar_base_fa517 {
+.HorizontalBar_base_fa517 {
     display: flex;
     width: 100%;
     height: 13rem;
@@ -666,12 +666,6 @@
     margin: 0 5rem 0 0;
     background-repeat: no-repeat;
     background-size: contain;
-}
-.UserInfo_badge_b0d39,
-.UserInfo_suffixBanner_a1f81,
-.UserInfo_suffixBadge_e6e7d,
-.UserInfo_suffixRibbon_b3197 {
-    display: none !important;
 }
 
 /* eslint-disable stylelint/scss/dollar-variable-pattern */
@@ -2556,215 +2550,190 @@
     height: 100%;
 }
 
-
 /* BattleStats TAB stats */
-.BattleStatsTabStats {
-    display: flex;
-    flex: 0 0 auto;
+/* WN8WithoutXVM: Random TAB statistics as one child overlay component.
+   The stock WG player rows are left untouched. All selectors are mod-owned. */
+
+.BattleStatsTabView,
+.BattleStatsTabList,
+.BattleStatsTabScroll,
+.BattleStatsTabScrollContent,
+.BattleStatsTabTeams {
+    overflow: visible !important;
+}
+
+/* Keep the currently approved visual geometry while the statistics themselves
+   are rendered independently of WG player-row markup. */
+.BattleStatsTabScrollContent {
+    width: 1450rem !important;
+    margin-left: -100rem !important;
+}
+
+.BattleStatsTabTeams {
+    position: relative !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    overflow: visible !important;
+}
+
+.BattleStatsTabAllies { width: 640rem !important; }
+.BattleStatsTabEnemies { width: 530rem !important; }
+
+/* One overlay is mounted as a child of the teams container. It owns both
+   statistic lanes, their captions, rows and anonymizer indicators. */
+.BattleStatsTabOverlay {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    height: 100% !important;
+    z-index: 20 !important;
+    pointer-events: none !important;
+    overflow: visible !important;
+}
+
+.BattleStatsTabOverlay_lane {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    width: 126rem !important;
+    overflow: visible !important;
+}
+
+.BattleStatsTabOverlay_lane_left {
+    left: 48rem !important;
+    right: auto !important;
+}
+
+.BattleStatsTabOverlay_lane_right {
+    left: auto !important;
+    right: -10rem !important;
+}
+
+.BattleStatsTabOverlay_header {
+    box-sizing: border-box;
+    display: flex !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: -18rem !important;
+    width: 126rem !important;
+    height: 16rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
     align-items: center;
-    gap: 2rem;
-    margin: -1rem 4rem 0 0;
+    justify-content: flex-start;
+    overflow: visible !important;
+}
+
+.BattleStatsTabOverlay_headerCell {
+    box-sizing: border-box;
+    display: block;
+    flex: 0 0 42rem !important;
+    width: 42rem !important;
+    min-width: 42rem !important;
+    max-width: 42rem !important;
+    height: 16rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #c9c5b5 !important;
+    font-size: 12rem !important;
+    font-weight: 700 !important;
+    line-height: 16rem !important;
+    text-align: center !important;
+    text-shadow: 0 0 2rem #000, 0 1rem 1rem #000;
+    white-space: nowrap;
+    overflow: visible !important;
+}
+
+.BattleStatsTabOverlay_rows {
+    display: block !important;
+    width: 126rem !important;
+    overflow: visible !important;
+}
+
+.BattleStatsTabOverlay_row {
+    display: block !important;
+    box-sizing: border-box;
+    position: relative !important;
+    width: 126rem !important;
+    height: 28rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+}
+
+/* Existing TBSWN8Stats is now only a row renderer used by the overlay. */
+.BattleStatsTabOverlay .BattleStatsTabStats {
+    box-sizing: border-box;
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: auto !important;
+    width: 126rem !important;
+    height: 28rem !important;
+    margin: 0 !important;
+    transform: none !important;
+    z-index: 1;
     font-size: 13rem;
-    line-height: 1;
+    line-height: 28rem;
     white-space: nowrap;
     pointer-events: none;
-}
-.BattleStatsTabStats_right {
-    flex-direction: row-reverse;
-    margin: -1rem 0 0 4rem;
-}
-.BattleStatsTabStats_item {
-    min-width: 23rem;
-    text-align: center;
-    text-shadow: 0 0 2rem #000, 0 0 3rem #000;
-}
-.BattleStatsTabStats_battles {
-    min-width: 20rem;
-}
-.BattleStatsTabStats_wr {
-    min-width: 34rem;
-}
-.BattleStatsTabStats_wn8 {
-    min-width: 34rem;
+    overflow: visible !important;
 }
 
-/* BattleStats TAB stats v3: keep nick visible */
-.UserInfo_user_info_ee23d {
-    width: 210rem;
-}
-.UserInfo_nickname_wrapper_af103 {
-    width: 181rem;
-}
-.BattleStatsTabStats {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: 1rem;
-    margin: -1rem 3rem 0 0;
-    font-size: 11rem;
-    line-height: 1;
-    white-space: nowrap;
-    pointer-events: none;
-}
-.BattleStatsTabStats_right {
-    flex-direction: row-reverse;
-    margin: -1rem 0 0 3rem;
-}
 .BattleStatsTabStats_item {
-    min-width: 22rem;
-    text-align: center;
-    text-shadow: 0 0 2rem #000, 0 0 3rem #000;
-}
-.BattleStatsTabStats_battles {
-    min-width: 28rem;
-}
-.BattleStatsTabStats_tier {
-    min-width: 24rem;
-}
-.BattleStatsTabStats_wr {
-    min-width: 31rem;
-}
-.BattleStatsTabStats_wn8 {
-    min-width: 26rem;
-}
-
-.BattleStatsTabStats_wn8.BattleStatsTabStats_anonymize {
-    min-width: 14rem;
-    width: 14rem;
-    height: 12rem;
+    box-sizing: border-box;
+    display: block;
+    flex: 0 0 42rem !important;
+    width: 42rem !important;
+    min-width: 42rem !important;
+    max-width: 42rem !important;
+    height: 28rem;
+    margin: 0;
     padding: 0;
-    color: transparent;
-    text-shadow: none;
+    position: relative;
+    text-align: center !important;
+    text-shadow: 0 0 2rem #000, 0 1rem 1rem #000;
+    overflow: visible !important;
+}
+
+.BattleStatsTabStats_tier {
+    display: none !important;
 }
 
 .BattleStatsTabStats_anonymizeIcon {
-    align-items: center;
-    justify-content: center;
-    display: inline-flex;
-    flex: 0 0 14rem;
+    display: flex !important;
+    position: absolute !important;
+    left: 0 !important;
+    right: auto !important;
+    top: 0 !important;
+    box-sizing: border-box;
+    width: 126rem !important;
+    min-width: 126rem !important;
+    max-width: 126rem !important;
+    height: 28rem !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    overflow: visible !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 .BattleStatsTabStats_anonymizeImage {
-    display: block;
-    width: 12rem;
-    height: 12rem;
-    margin: 0 auto;
-    object-fit: contain;
-}
-
-
-/* BattleStats TAB stats v4: stats before nickname */
-.BattleStatsTabStats {
-    order: -10;
-    margin: -1rem 4rem 0 0;
-}
-
-.UserInfo_user_info__right_d5b63 .BattleStatsTabStats,
-.BattleStatsTabStats_right {
-    order: -10;
-    margin: -1rem 0 0 4rem;
-}
-
-.UserInfo_userNameWrapper_ddc08 {
-    min-width: 0;
-}
-
-/* BattleStats TAB stats v6: allies stats left of nick, enemies stats right of nick */
-.BattleStatsTabStats {
-    order: 0 !important;
-    flex: 0 0 auto;
-    margin: -1rem 4rem 0 0;
-}
-.BattleStatsTabStats_right {
-    order: 0 !important;
-    flex-direction: row;
-    margin: -1rem 0 0 4rem;
-}
-.UserInfo_userNameWrapper_ddc08 {
-    min-width: 0;
-}
-
-/* BattleStats: force nickname to inherit TBS color from data-bind-style-color */
-.UserInfo_userName_ff8dc,
-.UserInfo_userName_ff8dc .UserInfo_tooltip_trigger_e6ce7 {
-    color: inherit;
-}
-.UserInfo_userNameWrapper__colorblind_c94be .UserInfo_userName_ff8dc .UserInfo_tooltip_trigger_e6ce7 {
-    color: inherit;
-}
-
-/* BattleStats TAB stats v7: give nickname more room without changing font size. */
-.UserInfo_user_info_ee23d {
-    width: 230rem;
-}
-
-.UserInfo_nickname_wrapper_af103 {
-    width: 226rem;
-}
-
-.Player_base_fe348 .Player_vehicleNameWrapper_f1c80 {
-    width: 80rem;
-    margin-right: 8rem;
-}
-
-.Player_base_fe348 .Player_vehicleName_aa673 {
-    width: 74rem;
-}
-
-.Player_right_da422 .Player_base_fe348 .Player_vehicleNameWrapper_f1c80 {
-    margin: 0 0 0 8rem;
-}
-
-/* BattleStats TAB stats v8: nick -> vehicle -> stats -> icon.
-   The enemy row is already mirrored by Player_right, so the same DOM order
-   produces icon -> stats -> vehicle -> nick on the right. */
-.UserInfo_user_info_ee23d {
-    width: 156rem;
-}
-
-.UserInfo_nickname_wrapper_af103 {
-    width: 127rem;
-}
-
-.BattleStatsTabStats,
-.BattleStatsTabStats_right {
-    order: 0 !important;
-    flex-direction: row;
-    margin: -1rem 4rem 0 4rem;
-}
-
-/* BattleStats TAB stats v9: fixed row geometry.
-   Keep the same occupied width for normal and anonymized players. */
-.BattleStatsTabStats,
-.BattleStatsTabStats_right {
-    width: 87rem;
-    margin: -1rem 4rem 0 4rem;
-    justify-content: center;
-}
-
-.BattleStatsTabStats_tier {
-    display: none;
-}
-
-.BattleStatsTabStats_wn8.BattleStatsTabStats_anonymize,
-.BattleStatsTabStats_anonymizeIcon {
-    width: 26rem;
-    min-width: 26rem;
-    flex-basis: 26rem;
-}
-
-/* Put the prestige swords outside the vehicle silhouette, in the gap
-   between the vehicle-class icon and the contour. */
-.Player_base_fe348 .Player_vehicleContour_ed4d4 .Player_prestigeGrade_b1d4f {
-    right: 108rem;
-    left: auto;
-    z-index: 2;
-    transform: translateY(-50%);
-}
-
-.Player_right_da422 .Player_base_fe348 .Player_vehicleContour_ed4d4 .Player_prestigeGrade_b1d4f {
-    right: auto;
-    left: 108rem;
-    z-index: 2;
-    transform: scaleX(-1) translateY(-50%);
+    display: block !important;
+    width: 16rem !important;
+    min-width: 16rem !important;
+    max-width: 16rem !important;
+    height: 16rem !important;
+    min-height: 16rem !important;
+    max-height: 16rem !important;
+    margin: 0 auto !important;
+    opacity: 1 !important;
+    visibility: visible !important;
 }

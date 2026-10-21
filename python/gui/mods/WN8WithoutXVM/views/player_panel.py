@@ -5,7 +5,9 @@ from Avatar import PlayerAvatar
 from gui.shared.personality import ServicesLocator
 from gui.shared import events, g_eventBus, EVENT_BUS_SCOPE
 from gui.Scaleform.framework.entities.View import View
-from gui.Scaleform.framework import g_entitiesFactories, ScopeTemplates, ViewSettings, ComponentSettings
+from gui.Scaleform.framework import ScopeTemplates, ViewSettings, ComponentSettings
+from helpers import dependency
+from skeletons.gui.impl import IGuiLoader
 from frameworks.wulf import WindowLayer
 from gui.Scaleform.daapi.view.battle.classic.players_panel import PlayersPanel
 from gui.Scaleform.framework.managers.loaders import SFViewLoadParams
@@ -274,8 +276,6 @@ class Events(object):
             originalUpdateVehiclesInfo = BattleStatisticsDataController.updateVehiclesInfo
             originalUpdateVehiclesStats = BattleStatisticsDataController.updateVehiclesStats
 
-            # Patch invalidateVehicleStatus — WoT calls this to redraw each panel row
-            # This is the ONLY reliable hook for restoring vehicleTF color
             _invalidate_names = ['invalidateVehicleStatus', 'invalidateVehicleInfo',
                                   '_invalidateVehicle', 'as_invalidateVehicleStatusS']
             for _method_name in _invalidate_names:
@@ -345,28 +345,6 @@ class Events(object):
             BattleStatisticsDataController.updateVehiclesInfo = patchedUpdateVehiclesInfo
             BattleStatisticsDataController.updateVehiclesStats = patchedUpdateVehiclesStats
 
-            if hasattr(PlayersPanel, '_PlayersPanel__handleShowExtendedInfo'):
-                originalHandleShowExtendedInfo = PlayersPanel._PlayersPanel__handleShowExtendedInfo
-
-                def patchedHandleShowExtendedInfo(ppSelf, value):
-                    result = originalHandleShowExtendedInfo(ppSelf, value)
-                    self._onPanelModeChanged(ppSelf)
-                    self._scheduleUpdateModeBurst()
-                    return result
-
-                PlayersPanel._PlayersPanel__handleShowExtendedInfo = patchedHandleShowExtendedInfo
-
-            if hasattr(PlayersPanel, 'setOverrideExInfo'):
-                originalSetOverrideExInfo = PlayersPanel.setOverrideExInfo
-
-                def patchedSetOverrideExInfo(ppSelf, value):
-                    result = originalSetOverrideExInfo(ppSelf, value)
-                    self._onPanelModeChanged(ppSelf)
-                    self._scheduleUpdateModeBurst()
-                    return result
-
-                PlayersPanel.setOverrideExInfo = patchedSetOverrideExInfo
-
             self._patchesApplied = True
             logger.debug('[PlayerPanel] Patches applied')
 
@@ -374,9 +352,9 @@ class Events(object):
             logger.error('[PlayerPanel] Failed to apply patches: %s', e)
 
     def _scheduleUpdateModeBurst(self):
+        # Update only in response to the actual panel event.
+        # No delayed polling/retry callbacks.
         self.updateMode()
-        for delay in (0.05, 0.15, 0.30, 0.60, 1.00, 1.50, 2.00, 3.00):
-            BigWorld.callback(delay, self.updateMode)
 
     def _onPanelModeChanged(self, ppSelf=None):
         if not self.impl:
@@ -384,12 +362,16 @@ class Events(object):
 
         try:
             state = -1
-            if ppSelf and hasattr(ppSelf, '_state'):
+            if ppSelf and hasattr(ppSelf, '_mode'):
+                state = ppSelf._mode
+            elif ppSelf and hasattr(ppSelf, '_state'):
                 state = ppSelf._state
             elif ppSelf and hasattr(ppSelf, 'state'):
                 state = ppSelf.state
 
-            if state >= 0 and state != self._currentPanelState:
+            if state >= 0:
+                if state == self._currentPanelState:
+                    return
                 self._currentPanelState = state
                 if self.componentUI:
                     self.componentUI.as_setPanelStateS(state)
@@ -408,7 +390,6 @@ class Events(object):
         logger.debug('[PlayerPanel] Populated')
         BigWorld.callback(0.1, lambda: self.onUIReady(self, 'playerPanel', baseSelf))
 
-
     def _dispose(self, baseSelf):
         self.impl = False
         self.viewLoad = False
@@ -418,17 +399,20 @@ class Events(object):
 
     def _deepUpdate(self, target, source):
         changed = False
-        for key in target:
-            if key in source:
-                value = source[key]
-                if isinstance(value, dict) and isinstance(target[key], dict):
-                    changed = self._deepUpdate(target[key], value) or changed
-                elif value is not None:
-                    if isinstance(value, unicode):
-                        value = value.encode('utf-8')
-                    if target[key] != value:
-                        target[key] = value
-                        changed = True
+        for key, value in source.items():
+            if value is None:
+                continue
+            if isinstance(value, dict):
+                if key not in target or not isinstance(target[key], dict):
+                    target[key] = {}
+                    changed = True
+                changed = self._deepUpdate(target[key], value) or changed
+            else:
+                if isinstance(value, unicode):
+                    value = value.encode('utf-8')
+                if key not in target or target[key] != value:
+                    target[key] = value
+                    changed = True
         return changed
 
     def setStatsData(self, vehicleID, data):
@@ -436,14 +420,10 @@ class Events(object):
             return None
         try:
             result = self.componentUI.as_setStatsDataS(vehicleID, data)
-            # After WoT updates vehicleTF, apply our WN8 color if available
-            self._applyVehicleNameColorFromCache(vehicleID)
             return result
         except Exception as e:
             logger.error('[PlayerPanel] setStatsData error: %s', e)
         return None
-
-
 
     def clearCache(self):
         if self.componentUI:
@@ -541,7 +521,6 @@ class Events(object):
         return None
 
     def getVehicleTFPositions(self, vehicleIDs):
-        """Returns list of {vehicleID, x, y, w, h, side, visible} from Flash stage coords."""
         if self.componentUI and vehicleIDs:
             try:
                 return self.componentUI.as_getVehicleTFPositionsS(list(vehicleIDs)) or []
@@ -561,15 +540,14 @@ class Events(object):
         return None
 
     def vehicleNameColor(self, vehicleID, color, vehicleName):
-        """Compatibility wrapper for the stock-field AS3 color controller."""
         return self.setPanelTextColor(vehicleID, color)
 
     def setPanelTextColor(self, vehicleID, color):
-        if not vehicleID or not color:
+        if not vehicleID:
             return None
         if self.componentUI:
             try:
-                return self.componentUI.as_setPanelTextColorS(vehicleID, color)
+                return self.componentUI.as_setPanelTextColorS(vehicleID, color or '')
             except Exception as e:
                 logger.error('[PlayerPanel] setPanelTextColor error: %s', e)
         return None
@@ -627,12 +605,14 @@ class Events(object):
             logger.error('[PlayerPanel] onComponentRegistered error: %s', e)
 
 
-g_events = None
+g_events = Events()
 
-if g_entitiesFactories.getSettings(WN8_PLAYER_PANEL_ALIAS) is None:
-    g_events = Events()
-    try:
-        g_entitiesFactories.addSettings(ViewSettings(
+
+def _register_player_panel():
+    entities_factory = dependency.instance(IGuiLoader).entitiesFactory
+
+    if entities_factory.getSettings(WN8_PLAYER_PANEL_ALIAS) is None:
+        entities_factory.addSettings(ViewSettings(
             WN8_PLAYER_PANEL_ALIAS,
             View,
             'playerPanel.swf',
@@ -640,24 +620,23 @@ if g_entitiesFactories.getSettings(WN8_PLAYER_PANEL_ALIAS) is None:
             None,
             ScopeTemplates.GLOBAL_SCOPE
         ))
-    except Exception as e:
-        logger.debug('[PlayerPanel] ViewSettings already registered: %s', e)
 
-    try:
-        g_entitiesFactories.addSettings(ComponentSettings(
+    if entities_factory.getSettings(AS3_FLASH_COMPONENT_NAME) is None:
+        entities_factory.addSettings(ComponentSettings(
             AS3_FLASH_COMPONENT_NAME,
             PlayerPanelMeta,
             ScopeTemplates.DEFAULT_SCOPE
         ))
-    except Exception as e:
-        logger.debug('[PlayerPanel] ComponentSettings already registered: %s', e)
 
-    try:
-        g_eventBus.addListener(
-            events.ComponentEvent.COMPONENT_REGISTERED,
-            g_events.onComponentRegistered,
-            scope=EVENT_BUS_SCOPE.GLOBAL
-        )
-        logger.debug('[PlayerPanel] Initialized')
-    except Exception as e:
-        logger.error('[PlayerPanel] EventBus listener failed: %s', e)
+    g_eventBus.addListener(
+        events.ComponentEvent.COMPONENT_REGISTERED,
+        g_events.onComponentRegistered,
+        scope=EVENT_BUS_SCOPE.GLOBAL
+    )
+    logger.debug('[PlayerPanel] Initialized')
+
+
+try:
+    _register_player_panel()
+except Exception as e:
+    logger.error('[PlayerPanel] initialization failed: %s', e)

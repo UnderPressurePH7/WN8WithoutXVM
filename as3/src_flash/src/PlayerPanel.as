@@ -1,6 +1,6 @@
 package
 {
-   import com.under_pressure.WN8WithoutXVM.battle.playerPanel;
+   import com.under_pressure.WN8WithoutXVM.battle.crossDomainTabPanel;
    import com.under_pressure.WN8WithoutXVM.injector.AbstractViewInjector;
    import com.under_pressure.WN8WithoutXVM.injector.IAbstractInjector;
 
@@ -13,7 +13,7 @@ package
 
       override public function get componentUI():Class
       {
-         return playerPanel;
+         return crossDomainTabPanel;
       }
 
       override public function get componentName():String

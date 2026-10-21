@@ -2,7 +2,9 @@ package com.under_pressure.WN8WithoutXVM.battle
 {
    import flash.display.DisplayObject;
    import flash.display.DisplayObjectContainer;
+   import flash.display.Sprite;
    import flash.events.Event;
+   import flash.filters.ColorMatrixFilter;
    import flash.filters.DropShadowFilter;
    import flash.geom.ColorTransform;
    import flash.geom.Point;
@@ -49,10 +51,14 @@ package com.under_pressure.WN8WithoutXVM.battle
       private var _tabOverlayHeaderFields:Vector.<TextField>;
       private var _cachedShadows:Dictionary;
       private var _panelTextColors:Dictionary;
+      private var _panelTextBaseFilters:Dictionary;
+      private var _stockTextStats:Dictionary;
+      private var _stockFieldRecords:Dictionary;
+      private var _hiddenSquadIcons:Dictionary;
+      private var _stockOverlayLayer:Sprite;
       private var _statsCacheMgr:StatisticDataCache;
       private var _eventListeners:Vector.<BattleAtlasSprite>;
       private var _currentPanelState:int = -1;
-      private var _panelTextRefreshFrame:int = 0;
       private var _isDisposed:Boolean = false;
 
       public var flashLogS:Function;
@@ -75,8 +81,14 @@ package com.under_pressure.WN8WithoutXVM.battle
          this._tabOverlayHeaderFields = new Vector.<TextField>();
          this._cachedShadows = new Dictionary();
          this._panelTextColors = new Dictionary();
+         this._panelTextBaseFilters = new Dictionary(true);
+         this._stockTextStats = new Dictionary();
+         this._stockFieldRecords = new Dictionary(true);
+         this._hiddenSquadIcons = new Dictionary(true);
+         this._stockOverlayLayer = new Sprite();
+         this._stockOverlayLayer.mouseEnabled = false;
+         this._stockOverlayLayer.mouseChildren = false;
          this._eventListeners = new Vector.<BattleAtlasSprite>();
-         this.addEventListener(Event.ENTER_FRAME, this.onPanelTextRefresh, false, 0, true);
 
          this._statsCacheMgr = StatisticDataCache.getInstance();
          this._statsCacheMgr.addEventListener(
@@ -179,9 +191,6 @@ package com.under_pressure.WN8WithoutXVM.battle
       {
          if (!list) return null;
 
-         // Scaleform class methods are inherited and therefore are not
-         // reported by hasOwnProperty(). Call them directly with guarded
-         // fallbacks instead.
          try
          {
             return list.getHolderByVehicleID(vehicleID);
@@ -278,8 +287,8 @@ package com.under_pressure.WN8WithoutXVM.battle
 
          var tf:TextField = this.acquireTextField();
          var childName:String = container.hasOwnProperty("child") ? String(container.child) : "";
-         var child:DisplayObject = childName && item.hasOwnProperty(childName)
-            ? item[childName] as DisplayObject
+         var child:DisplayObject = childName
+            ? this.getMember(item, childName) as DisplayObject
             : null;
 
          if (child && item is DisplayObjectContainer)
@@ -338,10 +347,11 @@ package com.under_pressure.WN8WithoutXVM.battle
 
          var baseX:Number = 0;
          var baseY:Number = 0;
+         var anchor:DisplayObject = null;
          var holderName:String = container.hasOwnProperty("holder") ? String(container.holder) : "";
-         if (holderName && item.hasOwnProperty(holderName))
+         if (holderName)
          {
-            var anchor:DisplayObject = item[holderName] as DisplayObject;
+            anchor = this.getMember(item, holderName) as DisplayObject;
             if (anchor)
             {
                baseX = anchor.x;
@@ -351,9 +361,36 @@ package com.under_pressure.WN8WithoutXVM.battle
 
          var offsetX:Number = pos.hasOwnProperty("x") ? Number(pos.x) : 0;
          var offsetY:Number = pos.hasOwnProperty("y") ? Number(pos.y) : 0;
+         if (anchor && pos.hasOwnProperty("anchorEdge"))
+            baseX = this.resolveAnchorEdgeX(anchor, String(pos.anchorEdge));
          var state:int = item.hasOwnProperty("state") ? int(item.state) : this._currentPanelState;
+         var usingFallback:Boolean = false;
+         var isFullPanel:Boolean =
+            state == PLAYERS_PANEL_STATE.FULL ||
+            state == PLAYERS_PANEL_STATE.FULL_NO_BADGES;
 
-         if (pos.hasOwnProperty("stateOffsets") && pos.stateOffsets && state >= 0)
+         if (container.hasOwnProperty("hideWithHolder") && Boolean(container.hideWithHolder) &&
+             (!isFullPanel || !this.isUsableTextAnchor(anchor)) &&
+             container.hasOwnProperty("fallbackHolder"))
+         {
+            var fallbackName:String = String(container.fallbackHolder);
+            var fallbackAnchor:DisplayObject = this.getMember(item, fallbackName) as DisplayObject;
+            if (fallbackAnchor)
+            {
+               anchor = fallbackAnchor;
+               baseX = fallbackAnchor.x;
+               baseY = fallbackAnchor.y;
+               if (pos.hasOwnProperty("fallbackAnchorEdge"))
+                  baseX = this.resolveAnchorEdgeX(
+                     fallbackAnchor, String(pos.fallbackAnchorEdge)
+                  );
+               offsetX = pos.hasOwnProperty("fallbackX") ? Number(pos.fallbackX) : offsetX;
+               offsetY = pos.hasOwnProperty("fallbackY") ? Number(pos.fallbackY) : offsetY;
+               usingFallback = true;
+            }
+         }
+
+         if (!usingFallback && pos.hasOwnProperty("stateOffsets") && pos.stateOffsets && state >= 0)
          {
             var stateKey:String = "state" + String(state);
             if (pos.stateOffsets.hasOwnProperty(stateKey))
@@ -368,6 +405,19 @@ package com.under_pressure.WN8WithoutXVM.battle
          tf.y = baseY + offsetY;
          tf.visible = state != PLAYERS_PANEL_STATE.HIDDEN;
 
+         var activeAlign:String = usingFallback && pos.hasOwnProperty("fallbackAlign")
+            ? String(pos.fallbackAlign)
+            : (pos.hasOwnProperty("align") ? String(pos.align) : "left");
+         tf.autoSize = activeAlign == "right"
+            ? TextFieldAutoSize.RIGHT
+            : (activeAlign == "center" ? TextFieldAutoSize.CENTER : TextFieldAutoSize.LEFT);
+
+         if (tf.visible && container.hasOwnProperty("hideWithHolder") &&
+             Boolean(container.hideWithHolder))
+         {
+            tf.visible = this.isUsableTextAnchor(anchor);
+         }
+
          if (tf.visible && pos.hasOwnProperty("hideInStates") && pos.hideInStates)
          {
             for each (var hiddenState:int in pos.hideInStates as Array)
@@ -379,6 +429,37 @@ package com.under_pressure.WN8WithoutXVM.battle
                }
             }
          }
+      }
+
+      private function isUsableTextAnchor(anchor:DisplayObject):Boolean
+      {
+         if (!anchor || !anchor.visible) return false;
+         var textField:TextField = anchor as TextField;
+         return !textField || (textField.text != null && textField.text.length > 0);
+      }
+
+      private function resolveAnchorEdgeX(anchor:DisplayObject, edge:String):Number
+      {
+         if (!anchor) return 0;
+         if (edge == "right") return anchor.x + anchor.width;
+         if (edge != "textLeft" && edge != "textRight") return anchor.x;
+
+         var textField:TextField = anchor as TextField;
+         if (!textField) return edge == "textRight" ? anchor.x + anchor.width : anchor.x;
+
+         var glyphWidth:Number = Math.min(
+            textField.width,
+            Math.max(0, textField.textWidth + 4)
+         );
+         var glyphLeft:Number = textField.x;
+         var format:TextFormat = textField.getTextFormat();
+         var align:String = format && format.align ? String(format.align) : "left";
+         if (align == "right")
+            glyphLeft = textField.x + textField.width - glyphWidth;
+         else if (align == "center")
+            glyphLeft = textField.x + (textField.width - glyphWidth) * 0.5;
+
+         return edge == "textRight" ? glyphLeft + glyphWidth : glyphLeft;
       }
 
       private function onStatsReceived(event:StatisticDataEvent):void
@@ -394,6 +475,8 @@ package com.under_pressure.WN8WithoutXVM.battle
       {
          var container:Object = this._containers[containerName];
          if (!container) return;
+         if (container.hasOwnProperty("stockTextInjection") &&
+             Boolean(container.stockTextInjection)) return;
 
          var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
          var tf:TextField = fields ? fields[vehicleID] as TextField : null;
@@ -413,8 +496,6 @@ package com.under_pressure.WN8WithoutXVM.battle
       {
          if (!data || this._isDisposed) return;
          this._statsCacheMgr.addStatsData(vehicleID, data);
-         for (var name:String in this._containers)
-            this.updateVehicleData(name, vehicleID, data);
       }
 
       public function as_create(containerName:String, config:Object):void
@@ -430,6 +511,16 @@ package com.under_pressure.WN8WithoutXVM.battle
          var vehicleID:int = int(data.vehicleID);
          var container:Object = this._containers[containerName];
          if (!container) return;
+         if (container.hasOwnProperty("stockTextInjection") &&
+             Boolean(container.stockTextInjection))
+         {
+            if (data.hasOwnProperty("text") && String(data.text).length > 0)
+               this._stockTextStats[vehicleID] = String(data.text);
+            else
+               delete this._stockTextStats[vehicleID];
+            this.applyStockTextStat(vehicleID);
+            return;
+         }
          var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
          var tf:TextField = fields ? fields[vehicleID] as TextField : null;
          if (!tf) tf = this.createPPTextField(containerName, vehicleID, container);
@@ -442,6 +533,14 @@ package com.under_pressure.WN8WithoutXVM.battle
 
       public function as_delete(containerName:String):void
       {
+         var container:Object = this._containers[containerName];
+         if (container && container.hasOwnProperty("stockTextInjection") &&
+             Boolean(container.stockTextInjection))
+         {
+            this.restoreAllStockTextFields();
+            this.restoreStockSquadIcons();
+            this._stockTextStats = new Dictionary();
+         }
          var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
          if (fields)
          {
@@ -458,6 +557,13 @@ package com.under_pressure.WN8WithoutXVM.battle
 
       public function as_updatePosition(containerName:String, vehicleID:int):void
       {
+         var container:Object = this._containers[containerName];
+         if (container && container.hasOwnProperty("stockTextInjection") &&
+             Boolean(container.stockTextInjection))
+         {
+            this.applyStockTextStat(vehicleID);
+            return;
+         }
          var fields:Dictionary = this._vehicleTextFields[containerName] as Dictionary;
          var tf:TextField = fields ? fields[vehicleID] as TextField : null;
          if (tf) this.updatePPTextFieldPosition(
@@ -470,12 +576,15 @@ package com.under_pressure.WN8WithoutXVM.battle
 
       public function as_updateAllPositions():void
       {
+         this.updateStockOverlayVisibility();
          for (var name:String in this._vehicleTextFields)
          {
             var fields:Dictionary = this._vehicleTextFields[name] as Dictionary;
             for (var vehicleID:* in fields)
                this.updatePPTextFieldPosition(name, int(vehicleID), fields[vehicleID], this._containers[name]);
          }
+         for (var statVehicleID:* in this._stockTextStats)
+            this.applyStockTextStat(int(statVehicleID));
       }
 
       public function as_setPanelState(state:int):void
@@ -546,28 +655,114 @@ package com.under_pressure.WN8WithoutXVM.battle
          this.as_setPanelTextColor(vehicleID, colorStr);
       }
 
-      /**
-       * Keep the stock fields and own only their color. WoT remains
-       * responsible for the text, visibility, width and position.
-       */
       public function as_setPanelTextColor(vehicleID:int, colorStr:String):void
       {
          if (!vehicleID || this._isDisposed) return;
          if (colorStr)
+         {
             this._panelTextColors[vehicleID] = colorStr;
+            this.applyPanelTextColor(vehicleID);
+         }
          else
+         {
             delete this._panelTextColors[vehicleID];
-         this.applyPanelTextColor(vehicleID);
+            this.restorePanelTextColor(vehicleID);
+         }
       }
 
-      private function onPanelTextRefresh(event:Event):void
+      private function ensureStockOverlayLayer():Sprite
       {
-         if (this._isDisposed || !this._panelTextColors) return;
-         if (++this._panelTextRefreshFrame < 3) return;
-         this._panelTextRefreshFrame = 0;
+         if (!this._stockOverlayLayer) return null;
+         var panel:DisplayObject = this.resolvePlayersPanel() as DisplayObject;
+         if (!panel || !panel.parent) return null;
+         var parent:DisplayObjectContainer = panel.parent;
+         if (this._stockOverlayLayer.parent != parent)
+         {
+            if (this._stockOverlayLayer.parent)
+               this._stockOverlayLayer.parent.removeChild(this._stockOverlayLayer);
+            var panelIndex:int = parent.getChildIndex(panel);
+            parent.addChildAt(
+               this._stockOverlayLayer,
+               Math.min(panelIndex + 1, parent.numChildren)
+            );
+         }
+         return this._stockOverlayLayer;
+      }
 
-         for (var vehicleID:* in this._panelTextColors)
-            this.applyPanelTextColor(int(vehicleID));
+      private function updateStockOverlayVisibility():void
+      {
+         var layer:Sprite = this.ensureStockOverlayLayer();
+         if (!layer) return;
+         var panel:DisplayObject = this.resolvePlayersPanel() as DisplayObject;
+         var fullStats:DisplayObject = this.resolveFullStats() as DisplayObject;
+         layer.visible = panel && panel.visible && !(fullStats && fullStats.visible);
+      }
+
+      private function restoreStockTextField(tf:TextField):void
+      {
+         if (!tf || !this._stockFieldRecords) return;
+         var record:Object = this._stockFieldRecords[tf];
+         if (!record) return;
+         if (tf.htmlText == record.injectedHtml)
+            tf.htmlText = record.originalHtml;
+         delete this._stockFieldRecords[tf];
+      }
+
+      private function restoreAllStockTextFields():void
+      {
+         if (!this._stockFieldRecords) return;
+         var fields:Array = [];
+         for (var field:* in this._stockFieldRecords) fields.push(field);
+         for each (var tf:TextField in fields) this.restoreStockTextField(tf);
+      }
+
+      private function applyStockTextStat(vehicleID:int):void
+      {
+         this.updateStockOverlayVisibility();
+         var item:* = this.getPPListItem(vehicleID);
+         if (!item) return;
+         this.hideStockSquadIcon(item);
+
+         var vehicleTF:TextField = this.getMember(item, "vehicleTF") as TextField;
+         var statHtml:String = this._stockTextStats[vehicleID] as String;
+
+         var fields:Dictionary = this._vehicleTextFields["wn8withoutxvm_pp_winrate"] as Dictionary;
+         if (!fields) return;
+         var statTF:TextField = fields[vehicleID] as TextField;
+         if (!statHtml || !item.visible)
+         {
+            if (statTF) statTF.visible = false;
+            return;
+         }
+
+         if (!statTF)
+         {
+            var layer:Sprite = this.ensureStockOverlayLayer();
+            if (!layer) return;
+            statTF = this.acquireTextField();
+            statTF.autoSize = TextFieldAutoSize.LEFT;
+            layer.addChild(statTF);
+            fields[vehicleID] = statTF;
+         }
+         statTF.htmlText = statHtml;
+         statTF.visible = true;
+
+         var rowPoint:Point = vehicleTF
+            ? vehicleTF.localToGlobal(new Point(0, 0))
+            : DisplayObject(item).localToGlobal(new Point(0, 0));
+         var screenWidth:Number = stage ? stage.stageWidth : 1920;
+         var edge:Number = 2;
+         var enemy:Boolean = this.isPPEnemy(vehicleID);
+         var globalX:Number = enemy
+            ? screenWidth - edge - statTF.width
+            : edge;
+         var overlay:Sprite = this.ensureStockOverlayLayer();
+         if (!overlay) return;
+         if (statTF.parent != overlay) overlay.addChild(statTF);
+         var localPoint:Point = overlay.globalToLocal(new Point(globalX, rowPoint.y));
+         statTF.x = localPoint.x;
+         statTF.y = localPoint.y;
+         statTF.autoSize = TextFieldAutoSize.LEFT;
       }
 
       private function applyPanelTextColor(vehicleID:int):void
@@ -578,19 +773,121 @@ package com.under_pressure.WN8WithoutXVM.battle
          var item:* = this.getPPListItem(vehicleID);
          if (!item) return;
 
-         // Panel modes may alternate between the full and cut nickname fields.
          this.colorStockTextField(this.getMember(item, "playerNameFullTF") as TextField, colorStr);
          this.colorStockTextField(this.getMember(item, "playerNameCutTF") as TextField, colorStr);
          this.colorStockTextField(this.getMember(item, "playerNameTF") as TextField, colorStr);
          this.colorStockTextField(this.getMember(item, "vehicleTF") as TextField, colorStr);
       }
 
+      private function panelTextColorFilter(color:uint):ColorMatrixFilter
+      {
+         var red:Number = (color >> 16) & 0xFF;
+         var green:Number = (color >> 8) & 0xFF;
+         var blue:Number = color & 0xFF;
+         return new ColorMatrixFilter([
+            0, 0, 0, 0, red,
+            0, 0, 0, 0, green,
+            0, 0, 0, 0, blue,
+            0, 0, 0, 1, 0
+         ]);
+      }
+
+      private function cloneColorTransform(value:ColorTransform):ColorTransform
+      {
+         return new ColorTransform(
+            value.redMultiplier,
+            value.greenMultiplier,
+            value.blueMultiplier,
+            value.alphaMultiplier,
+            value.redOffset,
+            value.greenOffset,
+            value.blueOffset,
+            value.alphaOffset
+         );
+      }
+
+      private function hideStockSquadIcon(item:*):void
+      {
+         if (!item) return;
+         var dynamicSquad:* = this.getMember(item, "dynamicSquad");
+         var squadIcon:DisplayObject = dynamicSquad
+            ? this.getMember(dynamicSquad, "squadIcon") as DisplayObject
+            : null;
+         if (!squadIcon) return;
+         if (!this._hiddenSquadIcons[squadIcon])
+            this._hiddenSquadIcons[squadIcon] = {visible: squadIcon.visible};
+         if (squadIcon.visible) squadIcon.visible = false;
+      }
+
+      private function restoreStockSquadIcons():void
+      {
+         if (!this._hiddenSquadIcons) return;
+         for (var key:* in this._hiddenSquadIcons)
+         {
+            var squadIcon:DisplayObject = key as DisplayObject;
+            var record:Object = this._hiddenSquadIcons[key];
+            if (squadIcon && record) squadIcon.visible = Boolean(record.visible);
+         }
+         this._hiddenSquadIcons = new Dictionary(true);
+      }
+
       private function colorStockTextField(tf:TextField, colorStr:String):void
       {
          if (!tf) return;
+
+         var original:ColorTransform = this._panelTextBaseFilters[tf] as ColorTransform;
+         if (!original)
+         {
+            original = this.cloneColorTransform(tf.transform.colorTransform);
+            this._panelTextBaseFilters[tf] = original;
+         }
+
          var color:uint = Utils.colorConvert(colorStr);
-         if (tf.textColor != color)
-            tf.textColor = color;
+         var tint:ColorTransform = this.cloneColorTransform(original);
+         tint.redMultiplier = 0;
+         tint.greenMultiplier = 0;
+         tint.blueMultiplier = 0;
+         tint.redOffset = (color >> 16) & 0xFF;
+         tint.greenOffset = (color >> 8) & 0xFF;
+         tint.blueOffset = color & 0xFF;
+         tf.transform.colorTransform = tint;
+      }
+
+      private function restorePanelTextColor(vehicleID:int):void
+      {
+         var item:* = this.getPPListItem(vehicleID);
+         if (!item || !this._panelTextBaseFilters) return;
+         var fields:Array = [
+            this.getMember(item, "playerNameFullTF") as TextField,
+            this.getMember(item, "playerNameCutTF") as TextField,
+            this.getMember(item, "playerNameTF") as TextField,
+            this.getMember(item, "vehicleTF") as TextField
+         ];
+         for each (var tf:TextField in fields)
+         {
+            if (!tf) continue;
+            var original:ColorTransform = this._panelTextBaseFilters[tf] as ColorTransform;
+            if (original)
+            {
+               tf.transform.colorTransform = this.cloneColorTransform(original);
+               delete this._panelTextBaseFilters[tf];
+            }
+         }
+      }
+
+      private function restoreAllPanelTextColors():void
+      {
+         if (!this._panelTextBaseFilters) return;
+         var fields:Array = [];
+         for (var key:* in this._panelTextBaseFilters) fields.push(key);
+         for each (var tf:TextField in fields)
+         {
+            if (!tf) continue;
+            var original:ColorTransform = this._panelTextBaseFilters[tf] as ColorTransform;
+            if (original)
+               tf.transform.colorTransform = this.cloneColorTransform(original);
+         }
+         this._panelTextBaseFilters = new Dictionary(true);
       }
 
       private function onRenderHandle(event:Event):void
@@ -654,8 +951,6 @@ package com.under_pressure.WN8WithoutXVM.battle
          if (!fullStats) return null;
          try
          {
-            // Classic and Stronghold expose the table as statsTable. Keep
-            // "table" for older clients and mode-specific implementations.
             if (fullStats.hasOwnProperty("statsTable"))
                return fullStats["statsTable"] as FullStatsTableBase;
             if (fullStats.hasOwnProperty("table"))
@@ -762,7 +1057,6 @@ package com.under_pressure.WN8WithoutXVM.battle
          for (var column:int = 0; column < TAB_COLUMN_COUNT; column++)
          {
             var slot:int = index * TAB_COLUMN_COUNT + column;
-            // A dynamic Vector throws RangeError #1125 for an unset index.
             while (this._tabOverlayTextFields.length <= slot)
             {
                this._tabOverlayTextFields.push(null);
@@ -798,8 +1092,6 @@ package com.under_pressure.WN8WithoutXVM.battle
       override protected function onDispose():void
       {
          this._isDisposed = true;
-         this.removeEventListener(Event.ENTER_FRAME, this.onPanelTextRefresh);
-
          if (this._statsCacheMgr)
          {
             this._statsCacheMgr.removeEventListener(
@@ -828,7 +1120,17 @@ package com.under_pressure.WN8WithoutXVM.battle
          this._containers = null;
          this._vehicleTextFields = null;
          this._cachedShadows = null;
+         this.restoreAllPanelTextColors();
          this._panelTextColors = null;
+         this._panelTextBaseFilters = null;
+         this.restoreAllStockTextFields();
+         this.restoreStockSquadIcons();
+         this._stockTextStats = null;
+         this._stockFieldRecords = null;
+         this._hiddenSquadIcons = null;
+         if (this._stockOverlayLayer && this._stockOverlayLayer.parent)
+            this._stockOverlayLayer.parent.removeChild(this._stockOverlayLayer);
+         this._stockOverlayLayer = null;
          this._eventListeners = null;
          this._tabOverlayTextFields = null;
          this._tabOverlayHeaderFields = null;

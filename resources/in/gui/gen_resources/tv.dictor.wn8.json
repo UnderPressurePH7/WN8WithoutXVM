@@ -1,0 +1,11 @@
+[
+    {
+        "type": "Layout",
+        "path": "coui://gui/gameface/mods/inq/wn8/WN8SettingsView.html",
+        "parameters": {
+            "entrance": "WN8SettingsView",
+            "impl": "gameface"
+        },
+        "id": "R.mods.dictor.wn8.WN8SettingsView"
+    }
+]

@@ -8,7 +8,10 @@ from gui.shared.events import GameEvent
 from gui.battle_control.arena_info import vos_collections
 
 from ..utils import logger, get_anonymize_icon_html, ANON_ICON_PANEL_SIZE
-from ..settings.config_param import g_configParams, WinratePosition, PanelMetric
+from ..settings.config_param import (
+    g_configParams, WinratePosition, PanelMetric,
+    PanelValueFormat, PanelTextColorMetric
+)
 
 try:
     from .player_panel import g_events, TYPE_PP
@@ -97,12 +100,15 @@ class PanelView(CallbackDelayer):
         self._scheduleReapplyAllColors()
 
     def _onFullStats(self, event):
-        self._scheduleReapplyAllColors()
+        # Random TAB is GameFace-owned and already contains its cached payload.
+        # Pressing TAB must do no WN8 model/overlay work at all.
+        if self._usesGamefaceRandomTab():
+            return
+        if g_events:
+            g_events.updateAllPositions()
 
     def _scheduleReapplyAllColors(self):
         self._reapplyAllColors()
-        for delay in (0.05, 0.15, 0.30, 0.60, 1.00, 1.50, 2.00, 3.00):
-            BigWorld.callback(delay, self._reapplyAllColors)
 
     def _reapplyAllColors(self):
         if not self._hasPanelCoreUI or not g_events or not g_events.viewLoad:
@@ -121,8 +127,6 @@ class PanelView(CallbackDelayer):
                 stats = self._statsManager.get_cached_stats(accountDBID)
                 if stats:
                     self._reapplyVehicleColors(vehicleID, vehicleData, stats, arenaDP)
-            # Scaleform Full Stats (Comp7 and legacy modes) is created only
-            # after TAB is pressed. Re-send the rows on every FULL_STATS burst.
             self._pushTabOverlays(arenaDP)
         except Exception as e:
             logger.error('[PanelView] _reapplyAllColors error: %s', e)
@@ -143,10 +147,11 @@ class PanelView(CallbackDelayer):
             self._createdContainers.append(self.CONTAINER_PP_ANON)
             logger.debug('[PanelView] PP anonymous icon container created')
 
-            if g_configParams.panelWinratePosition.value == WinratePosition.NEAR_ICON:
-                g_events.createPP(self.CONTAINER_PP_WINRATE, self._buildPpWinrateConfig())
+            statConfig = self._getPpStatConfig()
+            if statConfig is not None:
+                g_events.createPP(self.CONTAINER_PP_WINRATE, statConfig)
                 self._createdContainers.append(self.CONTAINER_PP_WINRATE)
-                logger.debug('[PanelView] PP Winrate container created')
+                logger.debug('[PanelView] PP statistic container created')
 
             self._containersCreated = True
             logger.debug('[PanelView] Containers created: %s', self._createdContainers)
@@ -158,7 +163,6 @@ class PanelView(CallbackDelayer):
                 self._pendingStats.clear()
         except Exception as e:
             logger.error('[PanelView] _createContainers error: %s', e)
-
 
     def _buildPpAnonConfig(self):
         state_offsets_left = {'state%d' % s: {'x': 10, 'y': 3} for s in range(8)}
@@ -182,19 +186,31 @@ class PanelView(CallbackDelayer):
         }
 
     def _buildPpWinrateConfig(self):
-        # Трохи ближче до танка/іконки, як у режимі з ніками.
-        state_offsets_left = {'state%d' % s: {'x': 20, 'y': 4} for s in range(8)}
-        state_offsets_right = {'state%d' % s: {'x': -70, 'y': 4} for s in range(8)}
+        try:
+            horizontal_offset = max(0, min(250, int(g_configParams.panelHorizontalOffset.value)))
+        except (ValueError, TypeError):
+            horizontal_offset = 0
+
+        # Tomato.gg-style mirrored offset: positive values move the statistic
+        # farther from its default position on both sides of the player panel.
+        left_shift = horizontal_offset
+        right_shift = -horizontal_offset
+        state_offsets_left = {
+            'state%d' % s: {'x': 35 + left_shift, 'y': 4} for s in range(8)
+        }
+        state_offsets_right = {
+            'state%d' % s: {'x': -70 + right_shift, 'y': 4} for s in range(8)
+        }
         return {
             'textKey': 'pp_winrate',
             'holder': 'vehicleIcon',
             'child': 'vehicleTF',
             'left': {
-                'x': 28, 'y': 4, 'width': 50, 'height': 20, 'align': 'left',
+                'x': 43 + left_shift, 'y': 4, 'width': 50, 'height': 20, 'align': 'left',
                 'hideInStates': [8], 'stateOffsets': state_offsets_left,
             },
             'right': {
-                'x': -78, 'y': 4, 'width': 50, 'height': 20, 'align': 'right',
+                'x': -78 + right_shift, 'y': 4, 'width': 50, 'height': 20, 'align': 'right',
                 'hideInStates': [8], 'stateOffsets': state_offsets_right,
             },
             'shadow': {
@@ -202,6 +218,35 @@ class PanelView(CallbackDelayer):
                 'alpha': 100, 'size': 2, 'strength': 200,
             },
         }
+
+    def _buildPpNicknameStatConfig(self):
+        return {
+            'textKey': 'pp_winrate',
+            'stockTextInjection': True,
+        }
+
+    def _getPpStatConfig(self):
+        position = g_configParams.panelWinratePosition.value
+        if position == WinratePosition.NEAR_ICON:
+            return self._buildPpWinrateConfig()
+        if position == WinratePosition.BEFORE_NICKNAME:
+            return self._buildPpNicknameStatConfig()
+        return None
+
+    def refreshStatContainer(self):
+        if not self._hasPanelCoreUI or not g_events or not g_events.viewLoad:
+            return
+        try:
+            if self.CONTAINER_PP_WINRATE in self._createdContainers:
+                g_events.delete(self.CONTAINER_PP_WINRATE)
+                self._createdContainers.remove(self.CONTAINER_PP_WINRATE)
+            statConfig = self._getPpStatConfig()
+            if statConfig is not None:
+                g_events.createPP(self.CONTAINER_PP_WINRATE, statConfig)
+                self._createdContainers.append(self.CONTAINER_PP_WINRATE)
+            self._scheduleReapplyAllColors()
+        except Exception as e:
+            logger.error('[PanelView] refreshStatContainer error: %s', e)
 
     def _buildVehicleNameConfig(self):
         state_offsets = {'state%d' % s: {'x': 0, 'y': 0} for s in range(8)}
@@ -246,6 +291,9 @@ class PanelView(CallbackDelayer):
             logger.debug('[PanelView] _getArenaDP error: %s', e)
         return None
 
+    def _isPanelDisplayVisible(self):
+        return True
+
     def _processAllPlayers(self):
         if not self._hasPanelCoreUI or not g_events or not g_events.viewLoad:
             return
@@ -269,8 +317,6 @@ class PanelView(CallbackDelayer):
                 accountDBID = vehicleData.get('accountDBID')
                 stats = self._statsManager.get_cached_stats(accountDBID) if accountDBID else None
 
-                # Простий режим: якщо для рядка немає стати і в оригіналі там були прочерки,
-                # показуємо біля нього іконку анонімайзера.
                 if not stats:
                     self._applyNoStatsAnonymousIcon(vehicleID, True)
                     continue
@@ -324,7 +370,13 @@ class PanelView(CallbackDelayer):
 
     def _applyVehicleNameColor(self, vehicleID, listItem, playerInfo):
         try:
-            vehicleColor = playerInfo.get('selected_rating_color') or playerInfo.get('wn8_color') or '#FFFFFF'
+            vehicleColor = ''
+            if self._isPanelDisplayVisible() and g_configParams.colorizePanelText.value:
+                if g_configParams.panelTextColorMetric.value == PanelTextColorMetric.WINRATE:
+                    vehicleColor = playerInfo.get('winrate_color') or '#FFFFFF'
+                else:
+                    vehicleColor = (playerInfo.get('selected_rating_color') or
+                                    playerInfo.get('wn8_color') or '#FFFFFF')
             g_events.setPanelTextColor(vehicleID, vehicleColor)
         except Exception as e:
             logger.error('[PanelView] _applyVehicleNameColor error for %s: %s', vehicleID, e)
@@ -366,10 +418,16 @@ class PanelView(CallbackDelayer):
         return
 
     def _getPanelMetricText(self, playerInfo):
+        if not self._isPanelDisplayVisible():
+            return '', '#FFFFFF'
+
         try:
             metric = g_configParams.panelMetric.value
         except Exception:
             metric = PanelMetric.WINRATE
+
+        if metric == PanelMetric.NONE:
+            return '', '#FFFFFF'
 
         if metric == PanelMetric.WN8:
             value = int(playerInfo.get('selected_rating') or playerInfo.get('wn8') or 0)
@@ -383,7 +441,10 @@ class PanelView(CallbackDelayer):
             value = 0
         if not value:
             return '', '#FFFFFF'
-        valueText = ('%.2f' % value).rstrip('0').rstrip('.') + '%'
+        if g_configParams.panelValueFormat.value == PanelValueFormat.WHOLE:
+            valueText = '%d%%' % int(round(value))
+        else:
+            valueText = ('%.2f' % value).rstrip('0').rstrip('.') + '%'
         return valueText, playerInfo.get('winrate_color') or '#FFFFFF'
 
     def _applyWinrateDisplay(self, vehicleID, listItem, playerInfo, team):
@@ -391,20 +452,34 @@ class PanelView(CallbackDelayer):
         statText, statColor = self._getPanelMetricText(playerInfo)
         if winratePosition == WinratePosition.NEAR_ICON:
             if self.CONTAINER_PP_WINRATE in self._createdContainers:
-                displayText = "<font color='{}' size='10'><b>{}</b></font>".format(
-                    statColor, statText) if statText else ''
+                try:
+                    fontSize = max(8, min(24, int(g_configParams.panelWinrateFontSize.value)))
+                except (ValueError, TypeError):
+                    fontSize = 12
+                displayText = "<font color='{}' size='{}'><b>{}</b></font>".format(
+                    statColor, fontSize, statText) if statText else ''
                 g_events.update(self.CONTAINER_PP_WINRATE, {
                     'vehicleID': vehicleID,
                     'text': displayText,
                 })
                 g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
-        elif winratePosition == WinratePosition.BEFORE_VEHICLE:
-            # The stock vehicle field is colored in AS3. Adding text before it
-            # would require an overlay again and reintroduce mode-switch jumps.
-            pass
+        elif winratePosition == WinratePosition.BEFORE_NICKNAME:
+            if self.CONTAINER_PP_WINRATE in self._createdContainers:
+                try:
+                    fontSize = max(8, min(24, int(g_configParams.panelWinrateFontSize.value)))
+                except (ValueError, TypeError):
+                    fontSize = 12
+                displayText = "<font color='{}' size='{}'><b>{}</b></font>".format(
+                    statColor, fontSize, statText) if statText else ''
+                g_events.update(self.CONTAINER_PP_WINRATE, {
+                    'vehicleID': vehicleID,
+                    'text': displayText,
+                })
+                g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
 
     def _applyAnonymousIcon(self, vehicleID, visible):
         try:
+            visible = bool(visible and g_configParams.showAnonymizerIcon.value)
             if self.CONTAINER_PP_ANON in self._createdContainers:
                 g_events.update(self.CONTAINER_PP_ANON, {
                     'vehicleID': vehicleID,
@@ -415,8 +490,6 @@ class PanelView(CallbackDelayer):
             logger.error('[PanelView] update anonymous panel icon failed for %s: %s', vehicleID, e)
 
     def _applyNoStatsAnonymousIcon(self, vehicleID, visible=True):
-        # Для цього моду немає 100% надійного прапорця аноніма в panel data.
-        # Тому використовуємо просту логіку: немає стати / були прочерки => ставимо іконку.
         self._applyAnonymousIcon(vehicleID, visible)
         if visible and self.CONTAINER_PP_WINRATE in self._createdContainers:
             try:
@@ -431,13 +504,12 @@ class PanelView(CallbackDelayer):
     def _applyAnonymousPlayer(self, listItem, vehicleID, team):
         try:
             self._applyAnonymousIcon(vehicleID, True)
-            if g_configParams.panelWinratePosition.value == WinratePosition.NEAR_ICON:
-                if self.CONTAINER_PP_WINRATE in self._createdContainers:
-                    g_events.update(self.CONTAINER_PP_WINRATE, {
-                        'vehicleID': vehicleID,
-                        'text': '',
-                    })
-                    g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
+            if self.CONTAINER_PP_WINRATE in self._createdContainers:
+                g_events.update(self.CONTAINER_PP_WINRATE, {
+                    'vehicleID': vehicleID,
+                    'text': '',
+                })
+                g_events.updatePosition(self.CONTAINER_PP_WINRATE, vehicleID)
         except Exception as e:
             logger.error('[PanelView] _applyAnonymousPlayer error: %s', e)
 
@@ -449,8 +521,9 @@ class PanelView(CallbackDelayer):
             if not listItem:
                 return
             accountDBID = vehicleData.get('accountDBID')
+            team = 'left' if arenaDP.isAllyTeam(vehicleData['team']) else 'right'
             if stats and stats.get('anonymous'):
-                self._applyAnonymousPlayer(listItem, vehicleID, 'left' if arenaDP.isAllyTeam(vehicleData['team']) else 'right')
+                self._applyAnonymousPlayer(listItem, vehicleID, team)
                 return
             if not accountDBID:
                 self._applyNoStatsAnonymousIcon(vehicleID, True)
@@ -469,6 +542,7 @@ class PanelView(CallbackDelayer):
                 'nick': vehicleData.get('name', ''),
                 'vehicle': self._getVehicleName(vehicleData),
             }
+            self._applyWinrateDisplay(vehicleID, listItem, playerInfo, team)
             self._applyVehicleNameColor(vehicleID, listItem, playerInfo)
         except Exception as e:
             logger.error('[PanelView] _reapplyVehicleColors error for %s: %s', vehicleID, e)
@@ -482,13 +556,25 @@ class PanelView(CallbackDelayer):
             pass
         return ''
 
+    def _usesGamefaceRandomTab(self):
+        arena = self._getArena()
+        bonus_type = getattr(arena, 'bonusType', None) if arena else None
+        try:
+            from constants import ARENA_BONUS_TYPE
+            random_types = tuple(
+                value for value in (
+                    getattr(ARENA_BONUS_TYPE, 'REGULAR', None),
+                    getattr(ARENA_BONUS_TYPE, 'RANDOM_NP2', None),
+                ) if value is not None
+            )
+            return bonus_type in random_types
+        except Exception:
+            return False
+
     def _pushTabOverlays(self, arenaDP):
-        """
-        Push rows to fixed-row Scaleform Full Stats (Comp7 and Stronghold).
-        Frontline is deliberately excluded: FrontlineFullStatsTable uses
-        recycled scrolling renderers and needs a dedicated adapter.
-        """
         if not arenaDP or not g_events or not g_events.componentUI:
+            return
+        if self._usesGamefaceRandomTab():
             return
         if self._isFrontlineBattle():
             return
@@ -524,16 +610,12 @@ class PanelView(CallbackDelayer):
             return False
 
     def _getTabVehicleIDs(self, arenaDP, allies):
-        """Return vehicle IDs in the same order as the stock Full Stats table."""
         collection_class = (
             vos_collections.AllyItemsCollection
             if allies else vos_collections.EnemyItemsCollection
         )
         sort_key = self._getTabSortKey()
         try:
-            # WoT 2.x API: collection receives a key *class*, while arenaDP is
-            # passed to ids()/iterator(). Passing arenaDP to the constructor
-            # silently installs it as the sort key and breaks every Flash TAB.
             collection = collection_class(sortKey=sort_key)
             return list(collection.ids(arenaDP))
         except Exception as e:
@@ -541,7 +623,6 @@ class PanelView(CallbackDelayer):
             return self._getFallbackTabVehicleIDs(arenaDP, allies, sort_key)
 
     def _getTabSortKey(self):
-        """Use the same sorting policy as each mode's statistics controller."""
         arena = self._getArena()
         bonus_type = getattr(arena, 'bonusType', None) if arena else None
 
@@ -577,7 +658,6 @@ class PanelView(CallbackDelayer):
         return vos_collections.VehicleInfoSortKey
 
     def _getFallbackTabVehicleIDs(self, arenaDP, allies, sort_key):
-        """Compatibility fallback when WG changes collection construction."""
         vehicles = []
         for vehicle in arenaDP.getVehiclesInfoIterator():
             try:
@@ -644,9 +724,6 @@ class PanelView(CallbackDelayer):
                     compact_battles(battles),
                     stats.get('battles_color', '#FFFFFF')))
 
-        # Read from the tank towards the outer edge:
-        # allies  (visual left -> right): battles, winrate, WN8
-        # enemies (visual left -> right): WN8, winrate, battles
         if not mirrored:
             parts.reverse()
         return {'vehicleID': vehicleID, 'text': '\t'.join(parts)}
@@ -669,7 +746,12 @@ class PanelView(CallbackDelayer):
                         break
         if vehicleID is not None:
             self._updatedVehicles.add(vehicleID)
-            self.delayCallback(0.1, self._processAllPlayers)
+            arena = self._getArena()
+            arenaDP = self._getArenaDP()
+            vehicleData = arena.vehicles.get(vehicleID) if arena and arena.vehicles else None
+            if vehicleData and arenaDP:
+                self._applyStatsToVehicle(vehicleID, vehicleData, stats, arenaDP)
+                self._pushTabOverlays(arenaDP)
 
     def updateAllPlayers(self):
         self.delayCallback(0, self._processAllPlayers)

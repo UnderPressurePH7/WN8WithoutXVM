@@ -1,0 +1,18 @@
+{
+    "version": 5,
+    "software": {
+        "animate": " ",
+        "python": "C:/Python27/python.exe"
+    },
+    "game": {
+        "force": false,
+        "folder": "World_of_Tanks_EU",
+        "version": "2.4.1.0"
+    },
+    "info": {
+        "id": "me.under_pressure.inq.wnxstats",
+        "name": "WN8 Without XVM",
+        "description": "WN8 Without XVM",
+        "version": "1.2.4"
+    }
+}

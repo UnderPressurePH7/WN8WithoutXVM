@@ -121,8 +121,8 @@ package com.under_pressure.WN8WithoutXVM.battle
 
       public function remove():void
       {
-         this._isDisposed = true;
          this.clear();
+         this._isDisposed = true;
          this._cache = null;
          this._mapVehicleID = null;
          this._mapAccountToVehicle = null;
