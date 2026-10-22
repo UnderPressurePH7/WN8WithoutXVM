@@ -2566,7 +2566,6 @@
    are rendered independently of WG player-row markup. */
 .BattleStatsTabScrollContent {
     width: 1450rem !important;
-    margin-left: -100rem !important;
 }
 
 .BattleStatsTabTeams {
